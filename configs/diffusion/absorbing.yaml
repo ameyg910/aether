@@ -1,0 +1,6 @@
+mask_token_id: 0
+num_timesteps: 1000
+schedule:
+  kind: linear
+  sigma_min: 1.0e-4
+  sigma_max: 20.0

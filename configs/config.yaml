@@ -1,0 +1,6 @@
+defaults:
+  - model: small
+  - diffusion: absorbing
+  - _self_
+
+seed: 42
