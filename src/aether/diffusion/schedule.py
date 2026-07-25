@@ -9,11 +9,11 @@ is therefore monotonically increasing on ``[0, 1]``.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any, TypeAlias
 
 import numpy as np
-import numpy.typing as npt
 
-FloatArray = npt.NDArray[np.float64]
+FloatArray: TypeAlias = np.ndarray[Any, np.dtype[np.float64]]
 
 
 class NoiseSchedule(ABC):
@@ -25,21 +25,24 @@ class NoiseSchedule(ABC):
 
     def mask_rate(self, t: FloatArray) -> FloatArray:
         """Masking probability at time ``t`` (increasing from 0 to 1)."""
-        return np.asarray(1.0 - self.alpha(t), dtype=np.float64)
+        out: FloatArray = np.asarray(1.0 - self.alpha(t), dtype=np.float64)
+        return out
 
 
 class LinearSchedule(NoiseSchedule):
     """``alpha(t) = 1 - t``. Mask rate rises linearly with time."""
 
     def alpha(self, t: FloatArray) -> FloatArray:
-        return np.asarray(1.0 - t, dtype=np.float64)
+        out: FloatArray = np.asarray(1.0 - t, dtype=np.float64)
+        return out
 
 
 class CosineSchedule(NoiseSchedule):
     """``alpha(t) = cos(pi/2 * t)^2``. Slower masking early, faster late."""
 
     def alpha(self, t: FloatArray) -> FloatArray:
-        return np.asarray(np.cos(0.5 * np.pi * t) ** 2, dtype=np.float64)
+        out: FloatArray = np.asarray(np.cos(0.5 * np.pi * t) ** 2, dtype=np.float64)
+        return out
 
 
 _SCHEDULES: dict[str, type[NoiseSchedule]] = {

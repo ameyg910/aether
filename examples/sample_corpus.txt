@@ -1,0 +1,15 @@
+The forward process of an absorbing diffusion model replaces tokens with a mask.
+Each position is corrupted independently, at a rate that grows with diffusion time.
+By the final step every token has become the absorbing mask state.
+
+The reverse process learns to unmask, predicting clean tokens from partial context.
+Because the model reads the whole sequence at once, it is bidirectional, not causal.
+Training reduces to a weighted sum of masked language modeling losses.
+
+Packing concatenates many short documents into fixed length blocks.
+This removes padding waste and keeps every training token useful.
+A single end of sequence token separates one document from the next.
+
+Reproducibility comes from content addressing and a manifest.
+Two identical builds produce identical shard hashes and one dataset hash.
+That hash is the fingerprint you cite when you say a run is reproducible.

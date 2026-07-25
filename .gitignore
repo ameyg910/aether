@@ -12,3 +12,5 @@ dist/
 coverage.xml
 outputs/
 .hydra/
+data/
+week2apply.sh

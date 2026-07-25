@@ -41,9 +41,31 @@ class ModelConfig:
 
 
 @dataclass
+class DataConfig:
+    """Dataset preparation and loading configuration.
+
+    ``source`` uses a scheme prefix: ``"hf:<name>:<config>"`` for a Hugging Face
+    dataset (real runs) or ``"local:<path>"`` for a plain-text file (offline
+    debug/tests). ``tokenizer`` selects ``"gpt2"`` (BPE, needs the ``data`` extra)
+    or ``"byte"`` (offline, dependency-free).
+    """
+
+    source: str = "hf:wikitext:wikitext-103-raw-v1"
+    split: str = "train"
+    tokenizer: str = "gpt2"
+    block_size: int = 1024
+    val_blocks: int = 256  # absolute, not a fraction, so it works while streaming
+    blocks_per_shard: int = 4096
+    max_documents: int | None = None  # cap document count for quick runs
+    seed: int = 42
+    output_dir: str = "data/wikitext103"
+
+
+@dataclass
 class AetherConfig:
     """Top-level run configuration."""
 
     model: ModelConfig = field(default_factory=ModelConfig)
     diffusion: DiffusionConfig = field(default_factory=DiffusionConfig)
+    data: DataConfig = field(default_factory=DataConfig)
     seed: int = 42

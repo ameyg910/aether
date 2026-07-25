@@ -10,6 +10,7 @@ from omegaconf import OmegaConf
 
 from aether.config.schemas import (
     AetherConfig,
+    DataConfig,
     DiffusionConfig,
     ModelConfig,
     NoiseScheduleConfig,
@@ -36,6 +37,7 @@ def load_config(overrides: list[str] | None = None) -> AetherConfig:
 
 __all__ = [
     "AetherConfig",
+    "DataConfig",
     "DiffusionConfig",
     "ModelConfig",
     "NoiseScheduleConfig",

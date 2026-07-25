@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from typing import Any, TypeAlias
 
 import numpy as np
-import numpy.typing as npt
 
 from aether.diffusion.schedule import NoiseSchedule, build_schedule
 
-IntArray = npt.NDArray[np.int64]
+IntArray: TypeAlias = np.ndarray[Any, np.dtype[np.int64]]
 
 
 @dataclass(frozen=True)

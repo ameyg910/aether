@@ -1,6 +1,7 @@
 defaults:
   - model: small
   - diffusion: absorbing
+  - data: wikitext103
   - _self_
 
 seed: 42

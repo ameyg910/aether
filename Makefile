@@ -1,5 +1,5 @@
 .RECIPEPREFIX := >
-.PHONY: help install lint format type test all demo plot config
+.PHONY: help install lint format type test all demo plot config data data-debug
 
 help:
 > @echo "Targets: install lint format type test all demo plot config"
@@ -30,3 +30,9 @@ plot:
 
 config:
 > python scripts/show_config.py
+
+data:
+> aether-prepare data=wikitext103
+
+data-debug:
+> aether-prepare data=local_debug

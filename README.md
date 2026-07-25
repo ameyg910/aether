@@ -27,7 +27,10 @@ make demo               # watch a sentence get progressively masked
 make plot               # write docs/assets/mask_rate_vs_t.png
 make config             # print the composed run configuration
 make all                # lint + type-check + test
+make data-debug         # build a tiny offline dataset (shards + manifest)
 ```
+
+> For real WikiText-103: `pip install -e ".[data]"` then `make data`.
 
 ### The forward process, in one command
 
@@ -59,7 +62,7 @@ and cheap to train. See [ADR-0001](docs/adr/0001-absorbing-state-mdlm.md).
 src/aether/
   config/      # typed Hydra structured configs + loader
   diffusion/   # noise schedules + absorbing forward process
-  data/        # tokenizer & dataset pipeline (Week 2)
+  data/        # tokenizer, packing, sharding, datamodule
   models/      # transformer denoiser (Week 3)
 configs/       # composable YAML run configuration
 scripts/       # demo + visualization entry points

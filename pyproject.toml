@@ -7,7 +7,7 @@ name = "aether-dlm"
 version = "0.1.0"
 description = "A production-grade masked (absorbing-state) diffusion language model platform."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Amey Gupta" }]
 keywords = ["diffusion", "language-model", "mlops", "pytorch", "mdlm"]
@@ -24,6 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 viz = ["matplotlib>=3.8"]
+data = ["tiktoken>=0.7", "datasets>=2.19"]
 dev = [
   "pytest>=8.0",
   "pytest-cov>=5.0",
@@ -35,6 +36,7 @@ dev = [
 
 [project.scripts]
 aether-forward = "aether.diffusion.forward:main"
+aether-prepare = "aether.data.prepare:main"
 
 [project.urls]
 Homepage = "https://github.com/ameyg910/aether"
@@ -45,22 +47,25 @@ packages = ["src/aether"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "N", "C4", "PT", "RUF"]
+# UP040 wants PEP 695 `type` aliases, which the pinned pre-commit mypy 1.11.2
+# cannot parse; we use typing.TypeAlias for broad compatibility.
+ignore = ["UP040"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.12"
 strict = true
 files = ["src"]
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["hydra.*", "matplotlib.*"]
+module = ["hydra.*", "matplotlib.*", "tiktoken.*", "datasets.*"]
 ignore_missing_imports = true
