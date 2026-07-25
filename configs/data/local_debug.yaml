@@ -1,0 +1,10 @@
+# Offline, dependency-free dataset for `make data-debug` and quick local tries.
+source: "local:examples/sample_corpus.txt"
+split: train
+tokenizer: byte
+block_size: 64
+val_blocks: 2
+blocks_per_shard: 16
+max_documents: null
+seed: 42
+output_dir: data/debug

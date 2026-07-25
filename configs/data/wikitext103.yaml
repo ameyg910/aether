@@ -1,0 +1,9 @@
+source: "hf:wikitext:wikitext-103-raw-v1"
+split: train
+tokenizer: gpt2
+block_size: 1024
+val_blocks: 256
+blocks_per_shard: 4096
+max_documents: null
+seed: 42
+output_dir: data/wikitext103
