@@ -1,0 +1,4 @@
+# @package tracking
+backend: jsonl   # none | jsonl | wandb
+project: aether
+tags: []

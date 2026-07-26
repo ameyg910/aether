@@ -1,0 +1,18 @@
+# @package train
+max_steps: 5000
+batch_size: 8
+grad_accum: 1
+lr: 3e-4
+min_lr_ratio: 0.1
+warmup_steps: 100
+weight_decay: 0.1
+grad_clip: 1.0
+precision: bf16
+ema_decay: 0.999
+device: auto
+log_every: 10
+sample_every: 500
+ckpt_every: 1000
+sample_length: 64
+sample_steps: 64
+out_dir: runs

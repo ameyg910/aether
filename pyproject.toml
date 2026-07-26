@@ -25,6 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+tracking = ["wandb>=0.17"]
 viz = ["matplotlib>=3.8"]
 data = ["tiktoken>=0.7", "datasets>=2.19"]
 dev = [
@@ -39,6 +40,7 @@ dev = [
 [project.scripts]
 aether-forward = "aether.diffusion.forward:main"
 aether-prepare = "aether.data.prepare:main"
+aether-train = "aether.train.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ameyg910/aether"
@@ -46,6 +48,11 @@ Repository = "https://github.com/ameyg910/aether"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aether"]
+
+[[tool.mypy.overrides]]
+# wandb is an optional tracking backend; it need not be installed to type-check.
+module = ["wandb", "wandb.*"]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100

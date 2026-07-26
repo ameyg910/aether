@@ -1,0 +1,15 @@
+# @package train
+# Tiny CPU-friendly run for smoke tests and local sanity checks.
+max_steps: 20
+batch_size: 4
+grad_accum: 2
+lr: 1e-3
+warmup_steps: 5
+precision: fp32
+ema_decay: 0.9
+device: cpu
+log_every: 5
+sample_every: 10
+ckpt_every: 10
+sample_length: 16
+sample_steps: 8

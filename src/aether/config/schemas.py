@@ -50,7 +50,7 @@ class DataConfig:
     or ``"byte"`` (offline, dependency-free).
     """
 
-    source: str = "hf:Salesforce/wikitext:wikitext-103-raw-v1"
+    source: str = "hf:wikitext:wikitext-103-raw-v1"
     split: str = "train"
     tokenizer: str = "gpt2"
     block_size: int = 1024
@@ -62,10 +62,51 @@ class DataConfig:
 
 
 @dataclass
+class TrainConfig:
+    """Training loop configuration (Week 4)."""
+
+    max_steps: int = 5000
+    batch_size: int = 8  # micro-batch per forward
+    grad_accum: int = 1  # optimizer steps every ``grad_accum`` micro-batches
+    lr: float = 3e-4
+    min_lr_ratio: float = 0.1  # cosine floor as a fraction of ``lr``
+    warmup_steps: int = 100
+    weight_decay: float = 0.1
+    beta1: float = 0.9
+    beta2: float = 0.95
+    grad_clip: float = 1.0
+    precision: str = "bf16"  # "bf16" | "fp16" | "fp32"
+    ema_decay: float = 0.999
+    device: str = "auto"  # "auto" | "cpu" | "cuda"
+    compile: bool = False  # torch.compile the model (stretch goal)
+    log_every: int = 10
+    sample_every: int = 500
+    ckpt_every: int = 1000
+    keep_last: int = 3  # rolling checkpoints to retain (besides latest.pt)
+    sample_length: int = 64
+    sample_steps: int = 64
+    out_dir: str = "runs"
+    run_name: str | None = None
+    resume: str | None = None  # path to a checkpoint to resume from
+
+
+@dataclass
+class TrackingConfig:
+    """Experiment-tracking backend configuration."""
+
+    backend: str = "jsonl"  # "none" | "jsonl" | "wandb"
+    project: str = "aether"
+    entity: str | None = None
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass
 class AetherConfig:
     """Top-level run configuration."""
 
     model: ModelConfig = field(default_factory=ModelConfig)
     diffusion: DiffusionConfig = field(default_factory=DiffusionConfig)
     data: DataConfig = field(default_factory=DataConfig)
+    train: TrainConfig = field(default_factory=TrainConfig)
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
     seed: int = 42

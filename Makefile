@@ -1,5 +1,5 @@
 .RECIPEPREFIX := >
-.PHONY: help install lint format type test all demo plot config data data-debug overfit
+.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug
 
 help:
 > @echo "Targets: install lint format type test all demo plot config"
@@ -39,3 +39,9 @@ data-debug:
 
 overfit:
 > python -m aether.train.overfit
+
+train:
+> aether-train
+
+train-debug:
+> aether-train train=debug data=local_debug tracking.backend=jsonl

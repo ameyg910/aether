@@ -1,7 +1,10 @@
 defaults:
+  - _aether_schema
   - model: small
   - diffusion: absorbing
   - data: wikitext103
+  - train: default
+  - tracking: default
   - _self_
 
 seed: 42
