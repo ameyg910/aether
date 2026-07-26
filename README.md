@@ -32,6 +32,10 @@ make data-debug         # build a tiny offline dataset (shards + manifest)
 
 > For real WikiText-103: `pip install -e ".[data]"` then `make data`.
 
+```bash
+python -m aether.train.overfit   # single-batch overfit: loss collapses to ~0
+```
+
 ### The forward process, in one command
 
 ```bash
@@ -63,7 +67,8 @@ src/aether/
   config/      # typed Hydra structured configs + loader
   diffusion/   # noise schedules + absorbing forward process
   data/        # tokenizer, packing, sharding, datamodule
-  models/      # transformer denoiser (Week 3)
+  models/      # bidirectional DiT denoiser (AdaLN time conditioning)
+  train/       # single-batch overfit entry point
 configs/       # composable YAML run configuration
 scripts/       # demo + visualization entry points
 tests/         # unit + invariant tests
