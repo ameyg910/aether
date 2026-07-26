@@ -34,7 +34,10 @@ make data-debug         # build a tiny offline dataset (shards + manifest)
 
 ```bash
 python -m aether.train.overfit   # single-batch overfit: loss collapses to ~0
+aether-train train=debug data=local_debug   # tiny tracked training run
 ```
+
+Training is tracked, checkpointed, and resumable -- see [docs/training.md](docs/training.md). Public W&B run: _TODO (link after first A6000 run)._
 
 ### The forward process, in one command
 
