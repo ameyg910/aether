@@ -50,7 +50,7 @@ class DataConfig:
     or ``"byte"`` (offline, dependency-free).
     """
 
-    source: str = "hf:wikitext:wikitext-103-raw-v1"
+    source: str = "hf:Salesforce/wikitext:wikitext-103-raw-v1"
     split: str = "train"
     tokenizer: str = "gpt2"
     block_size: int = 1024
