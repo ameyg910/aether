@@ -38,6 +38,9 @@ def get_rng_state() -> dict[str, Any]:
 def set_rng_state(state: dict[str, Any]) -> None:
     random.setstate(state["python"])
     np.random.set_state(state["numpy"])
-    torch.set_rng_state(state["torch"])
+    # RNG states must be CPU ByteTensors. torch.load(map_location="cuda") on a resume
+    # moves every tensor in the checkpoint to the GPU, including these, so coerce back
+    # to a CPU uint8 tensor to keep checkpoints portable across devices.
+    torch.set_rng_state(state["torch"].cpu().to(torch.uint8))
     if "cuda" in state and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(state["cuda"])
+        torch.cuda.set_rng_state_all([s.cpu().to(torch.uint8) for s in state["cuda"]])

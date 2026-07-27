@@ -60,7 +60,7 @@ class Trainer:
 
         self.amp_dtype = _AMP_DTYPE[cfg.precision]
         self.amp_enabled = cfg.precision in ("bf16", "fp16")
-        self.scaler = torch.amp.GradScaler(self.device.type, enabled=(cfg.precision == "fp16"))
+        self.scaler = torch.cuda.amp.GradScaler(enabled=(cfg.precision == "fp16"))
 
         self.optimizer: torch.optim.Optimizer = torch.optim.AdamW(
             self.model.parameters(),
