@@ -24,15 +24,10 @@ run), and `checkpoints/` (`latest.pt` plus a rolling window of `step_*.pt`).
 - `train.precision=bf16|fp16|fp32` — bf16 is the default on Ampere/Hopper.
 - `train.batch_size`, `train.grad_accum` — effective batch = `batch_size * grad_accum`.
 - `train.lr`, `train.warmup_steps`, `train.min_lr_ratio` — the schedule.
-<<<<<<< HEAD
-- `train.ema_decay` — EMA is used for all sampling/eval.
-- `train.max_steps`, `train.log_every`, `train.sample_every`, `train.ckpt_every`.
-=======
 - `train.grad_clip` — max gradient norm (see the note below on loss scale).
 - `train.ema_decay` — EMA is used for all sampling/eval.
 - `train.max_steps`, `train.log_every`, `train.sample_every`, `train.ckpt_every`.
 - `train.out_dir` — where runs are written (set this to a persistent path on a cluster).
->>>>>>> f3cc128 (fix(train): store RNG state on CPU for cross-device resume)
 
 ## Experiment tracking
 
@@ -40,32 +35,18 @@ run), and `checkpoints/` (`latest.pt` plus a rolling window of `step_*.pt`).
 
 - `jsonl` (default) — appends metrics to `runs/<name>/metrics.jsonl`; no network.
 - `wandb` — install the extra (`pip install -e ".[tracking]"`), then
-<<<<<<< HEAD
-  `aether-train tracking.backend=wandb tracking.project=aether`. Log in first with
-  `wandb login`.
-- `none` — discard everything (used in tests).
-
-Logged per step group: `loss`, `lr`, `grad_norm`, `steps_per_sec`, `seqs_per_sec`,
-and a decoded `sample` every `sample_every` steps (generated from the **EMA**
-weights).
-=======
   `aether-train tracking.backend=wandb tracking.project=aether`. Authenticate with
   `wandb login`, or set `WANDB_API_KEY` in the environment (better on shared machines).
 - `none` — discard everything (used in tests).
 
 Logged per step group: `loss`, `lr`, `grad_norm`, `steps_per_sec`, `seqs_per_sec`,
 and a decoded `sample` every `sample_every` steps (generated from the **EMA** weights).
->>>>>>> f3cc128 (fix(train): store RNG state on CPU for cross-device resume)
 
 ## Resume
 
 Runs are resumable byte-for-byte after preemption — checkpoints bundle model, EMA,
-<<<<<<< HEAD
-optimizer, scheduler, step, and all RNG states.
-=======
 optimizer, scheduler, step, and all RNG states (stored on CPU so a checkpoint written
 on one device restores cleanly on another).
->>>>>>> f3cc128 (fix(train): store RNG state on CPU for cross-device resume)
 
 ```bash
 aether-train train.resume=runs/<name>/checkpoints/latest.pt
@@ -74,15 +55,6 @@ aether-train train.resume=runs/<name>
 ```
 
 The resume path is verified in CI: `tests/train/test_checkpoint.py::test_resume_is_bit_for_bit`
-<<<<<<< HEAD
-trains, checkpoints, and shows that continuing from the checkpoint produces
-parameters identical to an uninterrupted run.
-
-## Public dashboard
-
-<!-- Paste your public W&B run URL here after the first A6000 run. -->
-Public run: _TODO — link your W&B run after the first training._
-=======
 trains, checkpoints, and shows that continuing from the checkpoint produces parameters
 identical to an uninterrupted run.
 
@@ -138,4 +110,3 @@ make numbers comparable to published MDLM results.
 Public run: https://wandb.ai/f20240973-bits-pilani/aether — the `aether-55m-v2` run shows
 the loss curve descending, text samples logged every 1000 steps, and a live
 resume-from-checkpoint.
->>>>>>> f3cc128 (fix(train): store RNG state on CPU for cross-device resume)

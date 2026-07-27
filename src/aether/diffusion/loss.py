@@ -76,13 +76,26 @@ def diffusion_loss_from_logits(
 
     Kept separate from corruption and the forward pass so gradients can be
     checked directly against this function.
+
+    The per-sequence cross-entropy is **averaged over masked positions** rather
+    than summed. Summing makes the loss (and its gradient) scale with the number
+    of masked tokens, which varies with ``t`` and the schedule. That means the
+    effective learning rate is different at every noise level, ``grad_norm``
+    scales with sequence length, and a ``grad_clip`` tuned for one setting breaks
+    at another. Averaging instead gives a loss in the familiar ~7-nats range,
+    makes ``grad_clip=1.0`` meaningful, and makes results comparable to published
+    MDLM numbers.
     """
     vocab = logits.shape[-1]
     bias = torch.zeros(vocab, dtype=logits.dtype, device=logits.device)
     bias[mask_token_id] = _MASK_LOGIT_BIAS  # SUBS zero-masking
     logp = torch.log_softmax(logits + bias, dim=-1)
     tok_logp = logp.gather(-1, x0.unsqueeze(-1)).squeeze(-1)
-    ce = -(tok_logp * masked.to(logits.dtype)).sum(dim=1)
+    # Sum CE over masked positions, then divide by the count. clamp(min=1)
+    # guards the rare case where t is so small that no tokens were masked
+    # (which cannot happen in practice given t_min=1e-3, but keeps autograd safe).
+    n_masked = masked.sum(dim=1).clamp(min=1).to(logits.dtype)
+    ce = -(tok_logp * masked.to(logits.dtype)).sum(dim=1) / n_masked
     weight = loss_weight(schedule, t)
     return (weight * ce).mean()
 

@@ -31,6 +31,7 @@ data = ["tiktoken>=0.7", "datasets>=2.19"]
 dev = [
   "pytest>=8.0",
   "pytest-cov>=5.0",
+  "pytest-timeout>=2.3",
   "mypy>=1.11",
   "ruff>=0.6",
   "pre-commit>=3.7",
@@ -64,7 +65,9 @@ select = ["E", "F", "I", "UP", "B", "SIM", "N", "C4", "PT", "RUF"]
 # UP040 wants PEP 695 `type` aliases, which older mypy cannot parse; we use
 # typing.TypeAlias for broad compatibility. N812 fights the universal PyTorch
 # convention `import torch.nn.functional as F`.
-ignore = ["UP040", "N812"]
+# N812/N817: `DDP`/`FSDP` are the canonical PyTorch import aliases; renaming
+# them to satisfy a naming rule would make the code harder to recognise.
+ignore = ["UP040", "N812", "N817"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

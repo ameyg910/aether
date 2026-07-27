@@ -1,0 +1,22 @@
+# @package train
+# Multi-GPU data parallel: every rank holds a full replica, gradients all-reduce.
+# Launch with: scripts/launch/torchrun_local.sh  (or torchrun -m aether.train.cli)
+max_steps: 5000
+batch_size: 8          # per-rank micro-batch; global batch = this * grad_accum * world_size
+grad_accum: 1
+lr: 3e-4
+min_lr_ratio: 0.1
+warmup_steps: 100
+weight_decay: 0.1
+grad_clip: 1.0
+precision: bf16
+ema_decay: 0.999
+device: auto
+strategy: ddp
+activation_checkpointing: false
+log_every: 10
+sample_every: 500
+ckpt_every: 1000
+sample_length: 64
+sample_steps: 64
+out_dir: runs

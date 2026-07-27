@@ -53,7 +53,8 @@ def test_loss_matches_independent_reference() -> None:
     ce = F.cross_entropy(ref_logits.reshape(-1, vocab), x0.reshape(-1), reduction="none").reshape(
         b, length
     )
-    per_seq = (ce * masked).sum(dim=1)
+    n_masked = masked.float().sum(dim=1).clamp(min=1)
+    per_seq = (ce * masked.float()).sum(dim=1) / n_masked
     ref = (loss_weight("linear", t) * per_seq).mean()
 
     assert torch.allclose(got, ref, atol=1e-5)

@@ -11,10 +11,10 @@ language model** — the MDLM/SUBS formulation that LLaDA and Dream scaled to ch
 autoregressive LLMs. This repository grows week by week from a typed research skeleton
 into a served, containerized, observable, open-source framework.
 
-> **Status:** Week 4 — the data pipeline, bidirectional DiT denoiser, and SUBS training
-> objective are in place, driven by a tracked, checkpointed, resumable training system
-> (bf16 AMP, gradient accumulation, cosine+warmup schedule, EMA). A ~55M-parameter model
-> trains on WikiText-103 with a public W&B dashboard. Distributed training, serving, and
+> **Status:** Week 5 — training is now distributed. The tracked, checkpointed training
+> system scales from one GPU to many via DDP or FSDP, reports throughput and Model FLOPs
+> Utilization, and runs unchanged under `torchrun` or SLURM. A ~55M-parameter model
+> trains on WikiText-103 with a public W&B dashboard. Serving, containerization, and
 > deployment land in later weeks (see the roadmap).
 
 ## What works today (Weeks 1–4)
@@ -38,7 +38,17 @@ into a served, containerized, observable, open-source framework.
   and resumable checkpointing bundling `{model, ema, optimizer, scheduler, step, rng}` —
   with a **bit-for-bit resume test** in CI. *(Week 4)*
 
-Every commit is gated by `mypy --strict`, `ruff`, and `pytest` in CI.
+- **Distributed training.** DDP and FSDP behind a single `train.strategy` flag, with a
+  size-based FSDP auto-wrap policy and optional activation checkpointing. Metrics reduce
+  across ranks, side effects are rank-0 only, and gradient accumulation suppresses the
+  all-reduce on all but the final micro-batch. Checkpoints are consolidated so they are
+  **world-size independent** — one written by a 3-GPU run restores into a single process.
+  Throughput and MFU are logged, and a scaling experiment turns several runs into a plot.
+  *(Week 5)*
+
+Every commit is gated by `mypy --strict`, `ruff`, and `pytest` in CI — including a
+multi-process DDP test that spawns real workers and asserts that ranks trained on
+different data end with identical parameters.
 
 ## Quickstart
 
@@ -59,14 +69,13 @@ make data-debug         # build a tiny offline dataset (shards + manifest)
 ```bash
 python -m aether.train.overfit   # single-batch overfit: loss collapses to ~0
 aether-train train=debug data=local_debug   # tiny tracked training run
+
+NPROC=3 scripts/launch/torchrun_local.sh    # 3-GPU DDP run
+sbatch --account=... --partition=... scripts/launch/slurm_fsdp.sbatch   # FSDP on SLURM
 ```
 
-<<<<<<< HEAD
-Training is tracked, checkpointed, and resumable -- see [docs/training.md](docs/training.md). Public W&B run: _TODO (link after first A6000 run)._
-=======
 Training is tracked, checkpointed, and resumable — see the [Training run](#training-run)
 section below and [docs/training.md](docs/training.md).
->>>>>>> f3cc128 (fix(train): store RNG state on CPU for cross-device resume)
 
 ### The forward process, in one command
 
@@ -102,6 +111,21 @@ compute problem. Evaluation metrics and higher-quality samplers arrive in Week 6
 and [docs/reviews/review-01.md](docs/reviews/review-01.md) for Engineering Review #1
 (strengths, weaknesses, technical debt, and the refactors queued before Week 5).
 
+## Scaling
+
+The same entry point runs single-process, multi-GPU, or multi-node — rank and world
+size come from the environment `torchrun`/SLURM sets:
+
+```bash
+NPROC=3 scripts/launch/torchrun_local.sh                 # DDP across 3 GPUs
+python scripts/scaling_plot.py runs/ddp-*gpu             # throughput table + plot
+```
+
+`scripts/scaling_plot.py` reports tokens/s, speedup, scaling efficiency, MFU, and
+estimated time-to-target per configuration, and writes `docs/assets/scaling.png`.
+See [docs/cluster.md](docs/cluster.md) for the full guide and
+[ADR-0003](docs/adr/0003-ddp-vs-fsdp.md) for the DDP-vs-FSDP tradeoff.
+
 ## Why absorbing-state diffusion?
 
 The forward process replaces tokens with an absorbing `[MASK]` state at a rate set by a
@@ -117,11 +141,13 @@ src/aether/
   diffusion/   # noise schedules, absorbing forward process, SUBS loss, sampler
   data/        # tokenizer, packing, sharding, datamodule
   models/      # bidirectional DiT denoiser (AdaLN time conditioning)
-  train/       # config-driven Trainer: AMP, grad-accum, cosine schedule,
-               #   EMA, resumable checkpointing, pluggable experiment tracking
+  train/       # config-driven Trainer: AMP, grad-accum, cosine schedule, EMA,
+               #   resumable checkpointing, pluggable experiment tracking,
+               #   distributed.py (DDP/FSDP), precision.py, mfu.py
   seed.py      # deterministic seeding + RNG state capture
 configs/       # composable YAML run configuration (model / data / train / tracking)
-scripts/       # demo + visualization entry points
+scripts/       # demo, visualization, scaling analysis
+  launch/      # torchrun (local multi-GPU) + SLURM sbatch templates
 tests/         # unit + invariant tests (incl. bit-for-bit resume)
 docs/          # ADRs, data + training guides, engineering reviews
 ```
@@ -134,7 +160,7 @@ docs/          # ADRs, data + training guides, engineering reviews
 | 2  | Data pipeline: tokenizer, packing, sharded memmap datasets | ✅ |
 | 3  | Bidirectional DiT denoiser + MDLM/SUBS loss | ✅ |
 | 4  | Training system: AMP, EMA, cosine schedule, checkpointing, tracking | ✅ |
-| 5  | Distributed training (DDP / FSDP) | ⏳ |
+| 5  | Distributed training (DDP / FSDP), MFU + scaling | ✅ |
 | 6  | Evaluation harness + higher-quality samplers | ⏳ |
 | 7  | Serving / inference API | ⏳ |
 | 8  | Docker + CI/CD | ⏳ |

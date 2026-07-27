@@ -79,6 +79,11 @@ class TrainConfig:
     ema_decay: float = 0.999
     device: str = "auto"  # "auto" | "cpu" | "cuda"
     compile: bool = False  # torch.compile the model (stretch goal)
+    # -- distributed (Week 5) --
+    strategy: str = "auto"  # "auto" | "none" | "ddp" | "fsdp"
+    fsdp_min_params: int = 1_000_000  # size-based auto-wrap threshold
+    activation_checkpointing: bool = False  # recompute activations in backward
+    device_peak_tflops: float | None = None  # override MFU denominator
     log_every: int = 10
     sample_every: int = 500
     ckpt_every: int = 1000

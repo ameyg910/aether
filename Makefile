@@ -1,5 +1,5 @@
 .RECIPEPREFIX := >
-.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug
+.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling
 
 help:
 > @echo "Targets: install lint format type test all demo plot config"
@@ -45,3 +45,9 @@ train:
 
 train-debug:
 > aether-train train=debug data=local_debug tracking.backend=jsonl
+
+train-ddp:
+> NPROC=$(NPROC) scripts/launch/torchrun_local.sh
+
+scaling:
+> python scripts/scaling_plot.py $(RUNS) --out docs/assets/scaling.png

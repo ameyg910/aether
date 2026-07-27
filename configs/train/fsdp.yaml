@@ -1,0 +1,25 @@
+# @package train
+# Fully sharded data parallel: params/grads/optimizer state are split across ranks.
+# Use when the model does not comfortably fit one device. Activation checkpointing
+# is on by default here -- FSDP is chosen under memory pressure, and recompute is
+# the other half of that trade.
+max_steps: 5000
+batch_size: 8
+grad_accum: 1
+lr: 3e-4
+min_lr_ratio: 0.1
+warmup_steps: 100
+weight_decay: 0.1
+grad_clip: 1.0
+precision: bf16
+ema_decay: 0.999
+device: auto
+strategy: fsdp
+fsdp_min_params: 1000000   # size-based auto-wrap threshold
+activation_checkpointing: true
+log_every: 10
+sample_every: 0            # sharded params: sample from a saved checkpoint instead
+ckpt_every: 1000
+sample_length: 64
+sample_steps: 64
+out_dir: runs
