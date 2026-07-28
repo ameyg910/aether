@@ -1,5 +1,5 @@
 .RECIPEPREFIX := >
-.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling
+.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling eval bench bench-regression
 
 help:
 > @echo "Targets: install lint format type test all demo plot config"
@@ -51,3 +51,12 @@ train-ddp:
 
 scaling:
 > python scripts/scaling_plot.py $(RUNS) --out docs/assets/scaling.png
+
+eval:
+> aether-eval $(ARGS)
+
+bench:
+> python benchmarks/nfe_quality.py $(ARGS)
+
+bench-regression:
+> python benchmarks/regression.py --json benchmarks/results/regression.json

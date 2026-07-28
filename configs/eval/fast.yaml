@@ -1,0 +1,13 @@
+# @package eval
+# Small budget for smoke checks and CI; too noisy to report.
+split: val
+batch_size: 2
+max_batches: 2
+mc_samples: 4
+sampler: ancestral
+steps: 16
+n_samples: 8
+sample_length: 32
+temperature: 1.0
+compute_mauve: true
+out_dir: benchmarks/results

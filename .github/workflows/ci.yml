@@ -30,3 +30,28 @@ jobs:
         run: mypy
       - name: Tests
         run: pytest --cov=aether --cov-report=term-missing
+
+  benchmark:
+    # Quality/perf regressions are silent -- nothing crashes, the numbers just get
+    # worse. This job pins a fast deterministic benchmark and fails the build when
+    # a threshold is breached. Runs in seconds on CPU so it can gate every PR.
+    name: Regression benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - name: Install CPU-only PyTorch
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[dev]"
+      - name: Run pinned regression benchmark
+        run: python benchmarks/regression.py --json benchmarks/results/regression-ci.json
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmarks/results/

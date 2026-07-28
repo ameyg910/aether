@@ -11,11 +11,11 @@ language model** — the MDLM/SUBS formulation that LLaDA and Dream scaled to ch
 autoregressive LLMs. This repository grows week by week from a typed research skeleton
 into a served, containerized, observable, open-source framework.
 
-> **Status:** Week 5 — training is now distributed. The tracked, checkpointed training
-> system scales from one GPU to many via DDP or FSDP, reports throughput and Model FLOPs
-> Utilization, and runs unchanged under `torchrun` or SLURM. A ~55M-parameter model
-> trains on WikiText-103 with a public W&B dashboard. Serving, containerization, and
-> deployment land in later weeks (see the roadmap).
+> **Status:** Week 6 — the model is now measured, not just trained. A typed evaluation
+> harness reports the likelihood bound (NELBO / bits-per-dim), MAUVE, and diversity; two
+> samplers trade compute for quality via an explicit NFE knob; and a pinned regression
+> benchmark gates every pull request. Training scales from one GPU to many via DDP or
+> FSDP with MFU reporting. Serving, containerization, and deployment land in later weeks.
 
 ## What works today (Weeks 1–4)
 
@@ -46,9 +46,16 @@ into a served, containerized, observable, open-source framework.
   Throughput and MFU are logged, and a scaling experiment turns several runs into a plot.
   *(Week 5)*
 
+- **Evaluation and sampling.** A typed, config-driven harness computing the diffusion
+  NELBO (nats/token, bits-per-dim, perplexity) with stratified time sampling, MAUVE via
+  the divergence frontier, and diversity metrics (distinct-n, entropy, repetition). Two
+  samplers — faithful `ancestral` and confidence-based parallel decoding — both reporting
+  NFE, plus a benchmark sweeping the quality-vs-compute curve. *(Week 6)*
+
 Every commit is gated by `mypy --strict`, `ruff`, and `pytest` in CI — including a
 multi-process DDP test that spawns real workers and asserts that ranks trained on
-different data end with identical parameters.
+different data end with identical parameters, and a pinned regression benchmark that
+fails the build when quality or performance silently drifts.
 
 ## Quickstart
 
@@ -72,6 +79,9 @@ aether-train train=debug data=local_debug   # tiny tracked training run
 
 NPROC=3 scripts/launch/torchrun_local.sh    # 3-GPU DDP run
 sbatch --account=... --partition=... scripts/launch/slurm_fsdp.sbatch   # FSDP on SLURM
+
+aether-eval eval.checkpoint=runs/my-run/checkpoints/latest.pt   # full metrics report
+make bench-regression                                          # pinned CI benchmark
 ```
 
 Training is tracked, checkpointed, and resumable — see the [Training run](#training-run)
@@ -106,7 +116,7 @@ same curve without a discontinuity.
 
 At this compute budget the model learns token frequency — common words surface in the
 samples — but not yet long-range coherence; a converged language model is a much larger
-compute problem. Evaluation metrics and higher-quality samplers arrive in Week 6. See
+compute problem. See the evaluation harness below for how that is now measured, plus
 [docs/training.md](docs/training.md) for how to launch, resume, and read the dashboard,
 and [docs/reviews/review-01.md](docs/reviews/review-01.md) for Engineering Review #1
 (strengths, weaknesses, technical debt, and the refactors queued before Week 5).
@@ -126,6 +136,41 @@ estimated time-to-target per configuration, and writes `docs/assets/scaling.png`
 See [docs/cluster.md](docs/cluster.md) for the full guide and
 [ADR-0003](docs/adr/0003-ddp-vs-fsdp.md) for the DDP-vs-FSDP tradeoff.
 
+## Evaluation and the NFE tradeoff
+
+**NFE** — number of function evaluations — is the count of model forward passes spent
+generating a sequence, and it is what makes diffusion LMs interesting: an autoregressive
+model needs one pass *per token* with no say in the matter, while a diffusion model
+chooses how much compute to spend on a sequence of any length.
+
+Two samplers make that tradeoff explicit:
+
+| sampler | picks what to unmask | use when |
+| --- | --- | --- |
+| `ancestral` | at random, at the schedule's rate | you want faithful, diverse samples |
+| `confidence` | most-confident positions first | latency matters — far better at low NFE |
+
+Sweep the curve and regenerate the table below:
+
+```bash
+python benchmarks/nfe_quality.py \
+  --checkpoint runs/my-run/checkpoints/latest.pt \
+  --data data/wikitext103 --steps 32 64 128 256 512
+```
+
+<!-- Regenerate with the command above and paste the emitted table here. -->
+| sampler | steps | NFE | p50 (s) | tok/s | distinct-2 | entropy | MAUVE |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| _pending — run the sweep against a trained checkpoint_ | | | | | | | |
+
+> Evaluate `confidence` against a **trained** checkpoint. On an untrained model its
+> argmax collapses immediately and it looks far worse than `ancestral` — a property of
+> the random model, not of the sampler.
+
+See [docs/evaluation.md](docs/evaluation.md) for the metric definitions and why
+perplexity is subtler for a diffusion LM than for an AR model (short version: it is a
+Monte Carlo estimate of a variational *bound*, not an exact likelihood).
+
 ## Why absorbing-state diffusion?
 
 The forward process replaces tokens with an absorbing `[MASK]` state at a rate set by a
@@ -138,7 +183,8 @@ and cheap to train. See [ADR-0001](docs/adr/0001-absorbing-state-mdlm.md).
 ```
 src/aether/
   config/      # typed Hydra structured configs + loader
-  diffusion/   # noise schedules, absorbing forward process, SUBS loss, sampler
+  diffusion/   # noise schedules, forward process, SUBS loss, samplers (NFE-aware)
+  evaluate/    # NELBO/bpd, MAUVE, diversity metrics + `aether-eval` CLI
   data/        # tokenizer, packing, sharding, datamodule
   models/      # bidirectional DiT denoiser (AdaLN time conditioning)
   train/       # config-driven Trainer: AMP, grad-accum, cosine schedule, EMA,
@@ -146,6 +192,7 @@ src/aether/
                #   distributed.py (DDP/FSDP), precision.py, mfu.py
   seed.py      # deterministic seeding + RNG state capture
 configs/       # composable YAML run configuration (model / data / train / tracking)
+benchmarks/    # NFE-quality sweep + pinned regression benchmark
 scripts/       # demo, visualization, scaling analysis
   launch/      # torchrun (local multi-GPU) + SLURM sbatch templates
 tests/         # unit + invariant tests (incl. bit-for-bit resume)
@@ -161,7 +208,7 @@ docs/          # ADRs, data + training guides, engineering reviews
 | 3  | Bidirectional DiT denoiser + MDLM/SUBS loss | ✅ |
 | 4  | Training system: AMP, EMA, cosine schedule, checkpointing, tracking | ✅ |
 | 5  | Distributed training (DDP / FSDP), MFU + scaling | ✅ |
-| 6  | Evaluation harness + higher-quality samplers | ⏳ |
+| 6  | Evaluation harness, samplers, NFE benchmark | ✅ |
 | 7  | Serving / inference API | ⏳ |
 | 8  | Docker + CI/CD | ⏳ |
 | 9  | Kubernetes + observability | ⏳ |

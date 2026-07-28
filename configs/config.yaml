@@ -5,6 +5,7 @@ defaults:
   - data: wikitext103
   - train: default
   - tracking: default
+  - eval: default
   - _self_
 
 seed: 42

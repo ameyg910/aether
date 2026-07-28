@@ -42,6 +42,7 @@ dev = [
 aether-forward = "aether.diffusion.forward:main"
 aether-prepare = "aether.data.prepare:main"
 aether-train = "aether.train.cli:main"
+aether-eval = "aether.evaluate.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ameyg910/aether"

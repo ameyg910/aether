@@ -106,6 +106,26 @@ class TrackingConfig:
 
 
 @dataclass
+class EvalConfig:
+    """Evaluation harness configuration (Week 6)."""
+
+    checkpoint: str | None = None  # path to a checkpoint; None uses a fresh model
+    split: str = "val"
+    batch_size: int = 8
+    max_batches: int | None = 16  # None evaluates the whole split
+    mc_samples: int = 16  # Monte Carlo draws for the NELBO estimate
+    # generation-side metrics
+    sampler: str = "ancestral"  # "ancestral" | "confidence"
+    steps: int = 128
+    n_samples: int = 32
+    sample_length: int = 128
+    temperature: float = 1.0
+    compute_mauve: bool = True
+    out_dir: str = "benchmarks/results"
+    run_name: str | None = None
+
+
+@dataclass
 class AetherConfig:
     """Top-level run configuration."""
 
@@ -114,4 +134,5 @@ class AetherConfig:
     data: DataConfig = field(default_factory=DataConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
+    eval: EvalConfig = field(default_factory=EvalConfig)
     seed: int = 42
