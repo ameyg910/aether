@@ -1,5 +1,5 @@
 .RECIPEPREFIX := >
-.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling eval bench bench-regression
+.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling eval bench bench-regression serve loadtest
 
 help:
 > @echo "Targets: install lint format type test all demo plot config"
@@ -60,3 +60,9 @@ bench:
 
 bench-regression:
 > python benchmarks/regression.py --json benchmarks/results/regression.json
+
+serve:
+> aether-serve $(ARGS)
+
+loadtest:
+> locust -f loadtest/locustfile.py --host $(HOST) --headless -u $(USERS) -r $(USERS) -t 30s

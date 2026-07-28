@@ -126,6 +126,21 @@ class EvalConfig:
 
 
 @dataclass
+class ServeConfig:
+    """Inference server configuration (Week 7)."""
+
+    model_version: str | None = None  # "local:<path>" | "hf:<repo>@<rev>" | path
+    host: str = "0.0.0.0"
+    port: int = 8000
+    device: str = "auto"
+    max_batch_size: int = 32  # caps GPU memory per batch
+    max_wait_ms: float = 20.0  # caps the latency each request pays for batching
+    workers: int = 1
+    log_level: str = "info"
+    cache_dir: str | None = None  # HF Hub download cache
+
+
+@dataclass
 class AetherConfig:
     """Top-level run configuration."""
 
@@ -135,4 +150,5 @@ class AetherConfig:
     train: TrainConfig = field(default_factory=TrainConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     eval: EvalConfig = field(default_factory=EvalConfig)
+    serve: ServeConfig = field(default_factory=ServeConfig)
     seed: int = 42

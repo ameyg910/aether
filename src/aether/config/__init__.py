@@ -16,6 +16,7 @@ from aether.config.schemas import (
     EvalConfig,
     ModelConfig,
     NoiseScheduleConfig,
+    ServeConfig,
     TrackingConfig,
     TrainConfig,
 )
@@ -58,6 +59,7 @@ __all__ = [
     "EvalConfig",
     "ModelConfig",
     "NoiseScheduleConfig",
+    "ServeConfig",
     "TrackingConfig",
     "TrainConfig",
     "load_config",

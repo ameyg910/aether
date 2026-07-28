@@ -25,6 +25,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+serve = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "pydantic>=2.6",
+  "prometheus-client>=0.20",
+  "huggingface-hub>=0.25",
+]
 tracking = ["wandb>=0.17"]
 viz = ["matplotlib>=3.8"]
 data = ["tiktoken>=0.7", "datasets>=2.19"]
@@ -32,6 +39,7 @@ dev = [
   "pytest>=8.0",
   "pytest-cov>=5.0",
   "pytest-timeout>=2.3",
+  "pytest-asyncio>=0.23",
   "mypy>=1.11",
   "ruff>=0.6",
   "pre-commit>=3.7",
@@ -43,6 +51,7 @@ aether-forward = "aether.diffusion.forward:main"
 aether-prepare = "aether.data.prepare:main"
 aether-train = "aether.train.cli:main"
 aether-eval = "aether.evaluate.cli:main"
+aether-serve = "aether.serve.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ameyg910/aether"
@@ -70,8 +79,16 @@ select = ["E", "F", "I", "UP", "B", "SIM", "N", "C4", "PT", "RUF"]
 # them to satisfy a naming rule would make the code harder to recognise.
 ignore = ["UP040", "N812", "N817"]
 
+[tool.ruff.lint.flake8-bugbear]
+# `Depends(...)` in a parameter default is how FastAPI declares dependencies;
+# B008 exists for mutable defaults and does not apply.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body"]
+
 [tool.pytest.ini_options]
 addopts = "-q"
+# Async serving tests declare @pytest.mark.asyncio explicitly.
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.mypy]

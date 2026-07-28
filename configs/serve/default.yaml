@@ -1,0 +1,9 @@
+# @package serve
+model_version: null      # set at launch, e.g. serve.model_version=runs/my-run
+host: 0.0.0.0
+port: 8000
+device: auto
+max_batch_size: 32
+max_wait_ms: 20.0
+workers: 1
+log_level: info

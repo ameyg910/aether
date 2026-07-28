@@ -14,6 +14,7 @@ real shards across many GPUs in production.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -120,8 +121,16 @@ class Trainer:
 
     # -- checkpointing -------------------------------------------------------
     def save(self, tag: str = "latest") -> Path | None:
-        """Write a full, world-size-independent checkpoint from rank 0."""
+        """Write a full, world-size-independent checkpoint from rank 0.
+
+        The model's architecture config travels with the weights. Head count in
+        particular leaves no trace in any parameter shape (attention reshapes into
+        heads inside the forward pass), so a checkpoint without it can be loaded
+        into a *differently shaped* model that silently computes something else.
+        """
         path = self.run_dir / "checkpoints" / f"{tag}.pt"
+        model_cfg = getattr(self.core, "cfg", None)
+        extra = {"model_config": dataclasses.asdict(model_cfg)} if model_cfg else {}
         save_checkpoint(
             path,
             self.model,
@@ -129,6 +138,7 @@ class Trainer:
             self.optimizer,
             self.scheduler,
             self.step,
+            extra=extra,
             is_main=self.dist.is_main,
         )
         return path if self.dist.is_main else None

@@ -32,7 +32,9 @@ by biasing that logit before the softmax.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import torch
 from torch import Tensor, nn
@@ -69,20 +71,29 @@ def _sample_from(probs: Tensor, generator: torch.Generator | None) -> Tensor:
     return drawn.reshape(batch, length)
 
 
+class DenoiseState(NamedTuple):
+    """One intermediate state of the reverse process."""
+
+    step: int  # completed denoising steps
+    total_steps: int
+    tokens: Tensor  # (B, L); may still contain [MASK]
+    n_masked: int  # positions still masked across the batch
+    nfe: int  # forward passes spent so far
+
+
 @torch.no_grad()
-def ancestral_sample_full(
+def _ancestral_iter(
     model: nn.Module,
     batch: int,
     length: int,
     mask_token_id: int,
-    steps: int = 64,
-    schedule: str = "linear",
-    device: torch.device | None = None,
-    generator: torch.Generator | None = None,
-    temperature: float = 1.0,
-) -> SamplerOutput:
+    steps: int,
+    schedule: str,
+    device: torch.device,
+    generator: torch.Generator | None,
+    temperature: float,
+) -> Iterator[DenoiseState]:
     """Reverse the absorbing process, unmasking at random per the schedule."""
-    device = device or torch.device("cpu")
     x = torch.full((batch, length), mask_token_id, device=device, dtype=torch.long)
     times = torch.linspace(1.0, 0.0, steps + 1, device=device)
     nfe = 0
@@ -101,37 +112,26 @@ def ancestral_sample_full(
         draw = torch.rand(x.shape, generator=generator, device=device)
         do_unmask = is_masked & (draw < unmask_p)
         x = torch.where(do_unmask, _sample_from(probs, generator), x)
+        yield DenoiseState(i + 1, steps, x, int((x == mask_token_id).sum()), nfe)
 
-    # Anything still masked at t=0 is filled with the model's best guess.
-    if bool((x == mask_token_id).any()):
-        probs = _masked_probs(
-            model, x, torch.zeros(batch, device=device), mask_token_id, temperature
-        )
-        nfe += 1
-        x = torch.where(x == mask_token_id, probs.argmax(dim=-1), x)
-    return SamplerOutput(tokens=x, nfe=nfe)
+    x, nfe = _finalize(model, x, mask_token_id, temperature, batch, device, nfe)
+    yield DenoiseState(steps, steps, x, 0, nfe)
 
 
 @torch.no_grad()
-def confidence_sample_full(
+def _confidence_iter(
     model: nn.Module,
     batch: int,
     length: int,
     mask_token_id: int,
-    steps: int = 64,
-    schedule: str = "linear",
-    device: torch.device | None = None,
-    generator: torch.Generator | None = None,
-    temperature: float = 1.0,
+    steps: int,
+    schedule: str,
+    device: torch.device,
+    generator: torch.Generator | None,
+    temperature: float,
     greedy: bool = True,
-) -> SamplerOutput:
-    """Unmask the most-confident positions first (parallel decoding).
-
-    The schedule sets how many tokens are revealed per step; confidence decides
-    *which*. ``greedy`` takes the argmax at revealed positions (lower entropy,
-    the usual choice for this sampler); set it False to sample instead.
-    """
-    device = device or torch.device("cpu")
+) -> Iterator[DenoiseState]:
+    """Unmask the most-confident positions first (parallel decoding)."""
     x = torch.full((batch, length), mask_token_id, device=device, dtype=torch.long)
     times = torch.linspace(1.0, 0.0, steps + 1, device=device)
     nfe = 0
@@ -149,8 +149,7 @@ def confidence_sample_full(
         a_next = alpha_of_t(schedule, times[i + 1])
         target_masked = torch.round((1.0 - a_next) * length).long().expand(batch)
         # Always make progress: at least one token per step, never more than remain.
-        n_reveal = (n_masked - target_masked).clamp(min=1)
-        n_reveal = torch.minimum(n_reveal, n_masked)
+        n_reveal = torch.minimum((n_masked - target_masked).clamp(min=1), n_masked)
 
         confidence = probs.max(dim=-1).values.masked_fill(~is_masked, float("-inf"))
         # Rank masked positions by confidence; reveal the top ``n_reveal`` of each row.
@@ -159,14 +158,124 @@ def confidence_sample_full(
 
         values = probs.argmax(dim=-1) if greedy else _sample_from(probs, generator)
         x = torch.where(do_unmask, values, x)
+        yield DenoiseState(i + 1, steps, x, int((x == mask_token_id).sum()), nfe)
 
+    x, nfe = _finalize(model, x, mask_token_id, temperature, batch, device, nfe)
+    yield DenoiseState(steps, steps, x, 0, nfe)
+
+
+def _finalize(
+    model: nn.Module,
+    x: Tensor,
+    mask_token_id: int,
+    temperature: float,
+    batch: int,
+    device: torch.device,
+    nfe: int,
+) -> tuple[Tensor, int]:
+    """Fill any position still masked at t=0 with the model's best guess."""
     if bool((x == mask_token_id).any()):
         probs = _masked_probs(
             model, x, torch.zeros(batch, device=device), mask_token_id, temperature
         )
         nfe += 1
         x = torch.where(x == mask_token_id, probs.argmax(dim=-1), x)
-    return SamplerOutput(tokens=x, nfe=nfe)
+    return x, nfe
+
+
+def iter_denoise(
+    model: nn.Module,
+    batch: int,
+    length: int,
+    mask_token_id: int,
+    sampler: str = "ancestral",
+    steps: int = 64,
+    schedule: str = "linear",
+    device: torch.device | None = None,
+    generator: torch.Generator | None = None,
+    temperature: float = 1.0,
+) -> Iterator[DenoiseState]:
+    """Yield every intermediate state of generation.
+
+    Powers the streaming endpoint: a client can watch text emerge from noise
+    instead of waiting for the final result. The non-streaming samplers consume
+    this same generator, so there is exactly one implementation of each strategy.
+    """
+    device = device or torch.device("cpu")
+    if sampler == "ancestral":
+        return _ancestral_iter(
+            model, batch, length, mask_token_id, steps, schedule, device, generator, temperature
+        )
+    if sampler == "confidence":
+        return _confidence_iter(
+            model, batch, length, mask_token_id, steps, schedule, device, generator, temperature
+        )
+    raise ValueError(f"Unknown sampler {sampler!r}; expected one of {SAMPLERS}")
+
+
+def _consume(states: Iterator[DenoiseState]) -> SamplerOutput:
+    final: DenoiseState | None = None
+    for final in states:  # noqa: B007 - we want the last yielded state
+        pass
+    if final is None:  # pragma: no cover - steps >= 1 always yields
+        raise RuntimeError("sampler produced no states")
+    return SamplerOutput(tokens=final.tokens, nfe=final.nfe)
+
+
+def ancestral_sample_full(
+    model: nn.Module,
+    batch: int,
+    length: int,
+    mask_token_id: int,
+    steps: int = 64,
+    schedule: str = "linear",
+    device: torch.device | None = None,
+    generator: torch.Generator | None = None,
+    temperature: float = 1.0,
+) -> SamplerOutput:
+    """Reverse the absorbing process, unmasking at random per the schedule."""
+    return _consume(
+        _ancestral_iter(
+            model,
+            batch,
+            length,
+            mask_token_id,
+            steps,
+            schedule,
+            device or torch.device("cpu"),
+            generator,
+            temperature,
+        )
+    )
+
+
+def confidence_sample_full(
+    model: nn.Module,
+    batch: int,
+    length: int,
+    mask_token_id: int,
+    steps: int = 64,
+    schedule: str = "linear",
+    device: torch.device | None = None,
+    generator: torch.Generator | None = None,
+    temperature: float = 1.0,
+    greedy: bool = True,
+) -> SamplerOutput:
+    """Unmask the most-confident positions first (parallel decoding)."""
+    return _consume(
+        _confidence_iter(
+            model,
+            batch,
+            length,
+            mask_token_id,
+            steps,
+            schedule,
+            device or torch.device("cpu"),
+            generator,
+            temperature,
+            greedy,
+        )
+    )
 
 
 def sample(

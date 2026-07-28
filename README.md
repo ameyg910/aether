@@ -11,11 +11,11 @@ language model** — the MDLM/SUBS formulation that LLaDA and Dream scaled to ch
 autoregressive LLMs. This repository grows week by week from a typed research skeleton
 into a served, containerized, observable, open-source framework.
 
-> **Status:** Week 6 — the model is now measured, not just trained. A typed evaluation
-> harness reports the likelihood bound (NELBO / bits-per-dim), MAUVE, and diversity; two
-> samplers trade compute for quality via an explicit NFE knob; and a pinned regression
-> benchmark gates every pull request. Training scales from one GPU to many via DDP or
-> FSDP with MFU reporting. Serving, containerization, and deployment land in later weeks.
+> **Status:** Week 7 — the model is now a service. A FastAPI server exposes generation
+> with dynamic batching, SSE streaming of the denoising process, versioned model loading
+> with rollback, health/readiness probes, and Prometheus metrics. Behind it sits a typed
+> evaluation harness, two samplers with an explicit NFE knob, and distributed training
+> with MFU reporting. Containerization and deployment land in later weeks.
 
 ## What works today (Weeks 1–4)
 
@@ -52,6 +52,12 @@ into a served, containerized, observable, open-source framework.
   samplers — faithful `ancestral` and confidence-based parallel decoding — both reporting
   NFE, plus a benchmark sweeping the quality-vs-compute curve. *(Week 6)*
 
+- **Inference service.** FastAPI with `/generate`, SSE streaming, `/health`, `/ready`,
+  `/metrics`, and admin swap/rollback. An async dynamic batcher merges concurrent
+  requests into single forward passes (**4.6× throughput** on eight concurrent requests),
+  and a model registry loads checkpoints by version tag from local paths or the HF Hub so
+  deploys are reproducible and rollback is instant. *(Week 7)*
+
 Every commit is gated by `mypy --strict`, `ruff`, and `pytest` in CI — including a
 multi-process DDP test that spawns real workers and asserts that ranks trained on
 different data end with identical parameters, and a pinned regression benchmark that
@@ -82,6 +88,9 @@ sbatch --account=... --partition=... scripts/launch/slurm_fsdp.sbatch   # FSDP o
 
 aether-eval eval.checkpoint=runs/my-run/checkpoints/latest.pt   # full metrics report
 make bench-regression                                          # pinned CI benchmark
+
+pip install -e ".[serve]"
+aether-serve serve.model_version=runs/my-run                    # inference API on :8000
 ```
 
 Training is tracked, checkpointed, and resumable — see the [Training run](#training-run)
@@ -171,6 +180,33 @@ See [docs/evaluation.md](docs/evaluation.md) for the metric definitions and why
 perplexity is subtler for a diffusion LM than for an AR model (short version: it is a
 Monte Carlo estimate of a variational *bound*, not an exact likelihood).
 
+## Serving
+
+```bash
+pip install -e ".[serve]"
+aether-serve serve.model_version=runs/my-run       # OpenAPI docs at /docs
+
+curl -X POST localhost:8000/generate \
+  -H 'content-type: application/json' \
+  -d '{"n_samples":2,"length":64,"steps":64,"sampler":"confidence"}'
+
+python examples/client_example.py --stream         # watch the text denoise live
+```
+
+The server holds arriving requests for a few milliseconds and runs whatever
+accumulated as one forward pass. Every request pays up to `max_wait_ms` of extra
+latency; in exchange they all share one pass, which is strongly net-positive under
+concurrency:
+
+| | wall clock | batch size per request |
+| --- | ---: | ---: |
+| 8 sequential requests | 0.61 s | 1 |
+| 8 concurrent requests | 0.13 s | 8 |
+
+Models load by **version tag** (`hf:owner/repo@revision`), so a deploy is reproducible
+and `/admin/rollback` is instant. See [docs/serving.md](docs/serving.md) for the full
+guide, including why liveness and readiness are separate probes.
+
 ## Why absorbing-state diffusion?
 
 The forward process replaces tokens with an absorbing `[MASK]` state at a rate set by a
@@ -185,6 +221,7 @@ src/aether/
   config/      # typed Hydra structured configs + loader
   diffusion/   # noise schedules, forward process, SUBS loss, samplers (NFE-aware)
   evaluate/    # NELBO/bpd, MAUVE, diversity metrics + `aether-eval` CLI
+  serve/       # FastAPI app, dynamic batcher, model registry, metrics
   data/        # tokenizer, packing, sharding, datamodule
   models/      # bidirectional DiT denoiser (AdaLN time conditioning)
   train/       # config-driven Trainer: AMP, grad-accum, cosine schedule, EMA,
@@ -193,6 +230,7 @@ src/aether/
   seed.py      # deterministic seeding + RNG state capture
 configs/       # composable YAML run configuration (model / data / train / tracking)
 benchmarks/    # NFE-quality sweep + pinned regression benchmark
+loadtest/      # locust load-test driver
 scripts/       # demo, visualization, scaling analysis
   launch/      # torchrun (local multi-GPU) + SLURM sbatch templates
 tests/         # unit + invariant tests (incl. bit-for-bit resume)
@@ -209,7 +247,7 @@ docs/          # ADRs, data + training guides, engineering reviews
 | 4  | Training system: AMP, EMA, cosine schedule, checkpointing, tracking | ✅ |
 | 5  | Distributed training (DDP / FSDP), MFU + scaling | ✅ |
 | 6  | Evaluation harness, samplers, NFE benchmark | ✅ |
-| 7  | Serving / inference API | ⏳ |
+| 7  | Serving: batching, registry, SSE, metrics | ✅ |
 | 8  | Docker + CI/CD | ⏳ |
 | 9  | Kubernetes + observability | ⏳ |
 | 10 | Release + Hugging Face | ⏳ |
