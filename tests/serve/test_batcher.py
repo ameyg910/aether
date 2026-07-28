@@ -131,3 +131,58 @@ async def test_stats_track_batching_effectiveness() -> None:
     assert batcher.stats.items_batched == 6
     assert batcher.stats.max_batch_size_seen == 6
     assert batcher.stats.mean_items_per_batch == 6.0
+
+
+class _NonBuiltinTimeoutError(Exception):
+    """Stands in for Python 3.10's ``asyncio.TimeoutError``.
+
+    Before 3.11 that class is ``concurrent.futures.TimeoutError``, which is *not*
+    a subclass of the builtin ``TimeoutError``. An ``except TimeoutError`` there
+    misses it, the error escapes the gather phase, and any request already popped
+    off the queue loses its future -- an unbounded client hang.
+    """
+
+
+@pytest.mark.asyncio
+async def test_uncaught_gather_error_still_serves_the_request() -> None:
+    batcher, seen = _recording_batcher(max_batch_size=8, max_wait_ms=20)
+
+    async def boom(*args: object, **kwargs: object) -> list[object]:
+        raise _NonBuiltinTimeoutError
+
+    batcher._gather = boom  # type: ignore[method-assign]
+    await batcher.start()
+    try:
+        result = await asyncio.wait_for(batcher.submit(KEY, 1), timeout=5)
+    finally:
+        await batcher.stop()
+    # Degraded to a batch of one, but served -- never left hanging.
+    assert result[0] == "result-1"
+    assert seen == [1]
+
+
+@pytest.mark.asyncio
+async def test_batcher_survives_repeated_gather_failures() -> None:
+    batcher, seen = _recording_batcher(max_batch_size=8, max_wait_ms=20)
+
+    async def boom(*args: object, **kwargs: object) -> list[object]:
+        raise _NonBuiltinTimeoutError
+
+    batcher._gather = boom  # type: ignore[method-assign]
+    await batcher.start()
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*[batcher.submit(KEY, 1) for _ in range(4)]), timeout=5
+        )
+    finally:
+        await batcher.stop()
+    assert len(results) == 4
+    assert len(seen) == 4
+
+
+def test_timeout_errors_constant_covers_both_classes() -> None:
+    """The constant exists so a linter cannot collapse the tuple back to one name."""
+    from aether.serve.batcher import _TIMEOUT_ERRORS
+
+    assert TimeoutError in _TIMEOUT_ERRORS
+    assert asyncio.TimeoutError in _TIMEOUT_ERRORS

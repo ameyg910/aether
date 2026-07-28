@@ -37,6 +37,12 @@ from aether.log import get_logger
 
 logger = get_logger("batcher")
 
+# ``asyncio.TimeoutError`` only became an alias of the builtin in Python 3.11.
+# On 3.10 it is ``concurrent.futures.TimeoutError``, which is NOT a subclass of
+# the builtin, so an `except TimeoutError` there silently misses it. Catch both
+# via a constant -- writing them inline lets a linter collapse them again.
+_TIMEOUT_ERRORS: tuple[type[BaseException], ...] = (TimeoutError, asyncio.TimeoutError)
+
 
 class BatchKey(NamedTuple):
     """Generation parameters that must match for requests to share a batch."""
@@ -154,6 +160,26 @@ class DynamicBatcher:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self.max_wait_s
 
+        try:
+            yield_batch = await self._gather(first, batch, total, deadline, loop)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # Whatever failed while looking for companions, ``batch`` already holds
+            # real requests whose futures nobody else will resolve. Run them rather
+            # than dropping them -- a lost future is an infinite client hang.
+            logger.warning("collect_degraded", error=repr(exc), held=len(batch))
+            return batch
+        return yield_batch
+
+    async def _gather(
+        self,
+        first: BatchItem,
+        batch: list[BatchItem],
+        total: int,
+        deadline: float,
+        loop: asyncio.AbstractEventLoop,
+    ) -> list[BatchItem]:
         while total < self.max_batch_size:
             remaining = deadline - loop.time()
             if remaining <= 0:
@@ -163,7 +189,7 @@ class DynamicBatcher:
             else:
                 try:
                     item = await asyncio.wait_for(self._queue.get(), remaining)
-                except TimeoutError:
+                except _TIMEOUT_ERRORS:
                     break
             if item.key != first.key or total + item.n_samples > self.max_batch_size:
                 # Incompatible or would overflow: hold it for the next round.

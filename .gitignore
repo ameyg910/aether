@@ -12,4 +12,5 @@ dist/
 coverage.xml
 outputs/
 .hydra/
+wee7apply.sh
 data/

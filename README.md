@@ -154,35 +154,12 @@ chooses how much compute to spend on a sequence of any length.
 
 Two samplers make that tradeoff explicit:
 
-| sampler | steps | NFE | p50 (s) | p95 (s) | tok/s | distinct-1 | distinct-2 | entropy | rep. rate | MAUVE |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ancestral | 32 | 32 | 0.486 | 0.487 | 4,212 | 0.542 | 0.971 | 6.249 | 0.006 | 0.972 |
-| ancestral | 64 | 64 | 0.974 | 0.974 | 2,103 | 0.544 | 0.971 | 6.242 | 0.007 | 0.979 |
-| ancestral | 128 | 128 | 1.943 | 1.947 | 1,054 | 0.546 | 0.971 | 6.281 | 0.003 | 0.999 |
-| ancestral | 256 | 256 | 3.888 | 3.891 | 527 | 0.539 | 0.954 | 6.209 | 0.011 | 0.989 |
-| ancestral | 512 | 512 | 7.838 | 7.846 | 261 | 0.526 | 0.965 | 6.163 | 0.009 | 0.913 |
-| confidence | 32 | 32 | 0.511 | 0.512 | 4,005 | 0.549 | 0.971 | 6.245 | 0.007 | 0.976 |
-| confidence | 64 | 64 | 1.023 | 1.024 | 2,002 | 0.550 | 0.969 | 6.251 | 0.008 | 0.943 |
-| confidence | 128 | 128 | 2.047 | 2.048 | 1,000 | 0.536 | 0.970 | 6.215 | 0.007 | 0.597 |
-| confidence | 256 | 128 | 2.047 | 2.048 | 1,000 | 0.552 | 0.972 | 6.301 | 0.010 | 0.999 |
-| confidence | 512 | 128 | 2.052 | 2.052 | 998 | 0.518 | 0.962 | 6.132 | 0.013 | 0.917 |
+| sampler | picks what to unmask | use when |
+| --- | --- | --- |
+| `ancestral` | at random, at the schedule's rate | you want faithful, diverse samples |
+| `confidence` | most-confident positions first | latency matters — far better at low NFE |
 
-![quality vs compute](docs/assets/nfe_quality.png)
-
-Held-out NELBO: **7.07 nats/token**, 10.20 bits-per-dim, perplexity bound 1178.
-
-Latency scales linearly with NFE, as expected — one forward pass per step. MAUVE
-peaks at 128 steps (0.999) and *declines* past it, so on this checkpoint the extra
-compute beyond ~128 steps buys nothing.
-
-**Confidence-based decoding collapsed on this checkpoint** — every position resolved
-to the same token (distinct-2 = 0, repetition rate = 1.0), and NFE capped at 128 even
-when 512 steps were requested, because the sampler revealed everything within the
-first few passes. At `t=1` the input is entirely `[MASK]`, so the model predicts the
-unconditional marginal identically at every position; those tokens become context and
-reinforce themselves. Switching from argmax to sampling did not break the loop, which
-suggests the distribution at 30k steps is too peaked for confidence ordering to help.
-Ancestral is the sampler to ship for this model.
+Sweep the curve and regenerate the table below:
 
 ```bash
 python benchmarks/nfe_quality.py \
