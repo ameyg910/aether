@@ -54,9 +54,10 @@ into a served, containerized, observable, open-source framework.
 
 - **Inference service.** FastAPI with `/generate`, SSE streaming, `/health`, `/ready`,
   `/metrics`, and admin swap/rollback. An async dynamic batcher merges concurrent
-  requests into single forward passes (**4.6× throughput** on eight concurrent requests),
-  and a model registry loads checkpoints by version tag from local paths or the HF Hub so
-  deploys are reproducible and rollback is instant. *(Week 7)*
+  requests into single forward passes — measured at **~12× throughput** under 16
+  concurrent users on one A6000 — and a model registry loads checkpoints by version tag
+  from local paths or the HF Hub so deploys are reproducible and rollback is instant.
+  *(Week 7)*
 
 Every commit is gated by `mypy --strict`, `ruff`, and `pytest` in CI — including a
 multi-process DDP test that spawns real workers and asserts that ranks trained on
@@ -196,16 +197,34 @@ python examples/client_example.py --stream         # watch the text denoise live
 The server holds arriving requests for a few milliseconds and runs whatever
 accumulated as one forward pass. Every request pays up to `max_wait_ms` of extra
 latency; in exchange they all share one pass, which is strongly net-positive under
-concurrency:
+concurrency.
 
-| | wall clock | batch size per request |
-| --- | ---: | ---: |
-| 8 sequential requests | 0.61 s | 1 |
-| 8 concurrent requests | 0.13 s | 8 |
+Measured on the 55.5M checkpoint, single RTX A6000, 16 concurrent users for 60 s:
+
+| metric | value |
+| --- | ---: |
+| throughput | ~15 req/s (`/generate`), ~17 req/s aggregate |
+| latency p50 | ~660 ms |
+| latency max | 1208 ms |
+| failures | 0 of 471 |
+| `/health` under full load | 4 ms |
+
+A single request takes 771 ms, so serialized serving would cap near 1.3 req/s — the
+measured 15 req/s is roughly a **12× gain**, with p50 *below* the single-request latency
+because a request arriving mid-batch rides along with it. Eight simultaneous requests are
+served by one forward pass (`aether_requests_total / aether_batches_total` = 9 / 2).
+
+`/health` answers in 4 ms while the GPU is saturated: the blocking model call runs in a
+worker thread, so the event loop never stalls and liveness probes keep responding — which
+is exactly why liveness is a separate probe from readiness.
 
 Models load by **version tag** (`hf:owner/repo@revision`), so a deploy is reproducible
-and `/admin/rollback` is instant. See [docs/serving.md](docs/serving.md) for the full
-guide, including why liveness and readiness are separate probes.
+and `/admin/rollback` is instant.
+
+**See [docs/serving-demo.md](docs/serving-demo.md) for the full verified transcript** —
+every endpoint, the SSE stream resolving token by token, the batching counters, and the
+load-test output. [docs/serving.md](docs/serving.md) is the reference guide, including
+why liveness and readiness are separate probes.
 
 ## Why absorbing-state diffusion?
 
