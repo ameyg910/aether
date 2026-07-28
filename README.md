@@ -173,6 +173,8 @@ python benchmarks/nfe_quality.py \
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | _pending — run the sweep against a trained checkpoint_ | | | | | | | |
 
+![quality vs compute](docs/assets/nfe_quality.png)
+
 > Evaluate `confidence` against a **trained** checkpoint. On an untrained model its
 > argmax collapses immediately and it looks far worse than `ancestral` — a property of
 > the random model, not of the sampler.
