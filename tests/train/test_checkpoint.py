@@ -73,3 +73,43 @@ def test_resume_is_bit_for_bit(tmp_path: Path) -> None:
     got = torch.cat([p.flatten() for p in tr2.model.parameters()])
 
     assert torch.equal(ref, got)
+
+
+def test_pruning_only_touches_this_run_s_checkpoints(tmp_path: Path) -> None:
+    """Retention must not be computed from a directory glob.
+
+    A glob sorted by step number deletes the *lowest* numbered files. Start a
+    fresh run in a directory that already holds high-numbered checkpoints from a
+    previous run and it deletes the checkpoint it just wrote, keeping the stale
+    ones. This is not hypothetical: it destroyed real checkpoints.
+    """
+    run = tmp_path / "run"
+    (run / "checkpoints").mkdir(parents=True)
+    for step in (26000, 28000, 30000):
+        (run / "checkpoints" / f"step_{step}.pt").write_bytes(b"previous run")
+
+    trainer = _trainer(run)
+    trainer.cfg.max_steps = 6
+    trainer.cfg.ckpt_every = 2
+    trainer.cfg.keep_last = 2
+    trainer.fit(iter(_fixed_data()))
+
+    present = {p.name for p in (run / "checkpoints").glob("*.pt")}
+    # The previous run's files are untouched.
+    assert {"step_26000.pt", "step_28000.pt", "step_30000.pt"} <= present
+    # This run kept its own most recent two...
+    assert {"step_4.pt", "step_6.pt"} <= present
+    # ...and pruned its own oldest.
+    assert "step_2.pt" not in present
+
+
+def test_keep_last_zero_disables_pruning(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    trainer = _trainer(run)
+    trainer.cfg.max_steps = 6
+    trainer.cfg.ckpt_every = 2
+    trainer.cfg.keep_last = 0
+    trainer.fit(iter(_fixed_data()))
+
+    present = {p.name for p in (run / "checkpoints").glob("step_*.pt")}
+    assert present == {"step_2.pt", "step_4.pt", "step_6.pt"}

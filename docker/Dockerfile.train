@@ -1,0 +1,80 @@
+# syntax=docker/dockerfile:1.7
+#
+# Multi-stage image for Aether training jobs.
+#
+# Same structure as Dockerfile.serve, with three differences that follow from the
+# workload: CUDA wheels by default (training without a GPU is not the point), the
+# `data` extra for dataset preparation, and no HEALTHCHECK -- a batch job has no
+# endpoint to probe, and its health is whether the process is still running.
+#
+#   docker build -f docker/Dockerfile.train -t aether-train .
+#   docker run --gpus all -v $PWD/runs:/app/runs -v $PWD/data:/app/data \
+#     aether-train model=medium data=wikitext103 train.out_dir=/app/runs
+
+ARG PYTHON_VERSION=3.12
+
+# ---------------------------------------------------------------- builder ----
+FROM python:${PYTHON_VERSION}-slim AS builder
+
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cu124
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv "$VIRTUAL_ENV"
+
+WORKDIR /build
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url "${TORCH_INDEX}" torch
+
+COPY pyproject.toml README.md ./
+COPY src/aether/__init__.py src/aether/__init__.py
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install ".[data,tracking]" && pip uninstall -y aether-dlm
+
+COPY src/ src/
+COPY configs/ configs/
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-deps .
+
+# ---------------------------------------------------------------- runtime ----
+FROM python:${PYTHON_VERSION}-slim AS runtime
+
+LABEL org.opencontainers.image.title="aether-train" \
+      org.opencontainers.image.description="Masked diffusion LM training" \
+      org.opencontainers.image.source="https://github.com/ameyg910/aether" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+ENV VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    HF_HOME=/app/.cache/huggingface
+
+RUN groupadd --gid 10001 aether \
+    && useradd --uid 10001 --gid aether --create-home --shell /usr/sbin/nologin aether
+
+COPY --from=builder --chown=aether:aether /opt/venv /opt/venv
+COPY --chown=aether:aether configs/ /app/configs/
+COPY --chown=aether:aether scripts/ /app/scripts/
+
+# Mount points for datasets and outputs. Created with the right owner so a
+# bind mount from the host does not land as root-owned and unwritable.
+RUN mkdir -p /app/data /app/runs /app/.cache \
+    && chown -R aether:aether /app
+
+WORKDIR /app
+USER aether
+
+ENTRYPOINT ["aether-train"]
+CMD ["--help"]

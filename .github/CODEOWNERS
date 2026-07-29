@@ -1,0 +1,18 @@
+# Default owner for everything.
+*                       @ameyg910
+
+# Areas where a change is easy to get subtly wrong and expensive to notice:
+# the loss, the samplers, and the distributed/checkpoint paths all fail silently
+# rather than loudly.
+/src/aether/diffusion/  @ameyg910
+/src/aether/train/      @ameyg910
+/src/aether/serve/      @ameyg910
+
+# Build, release, and CI configuration.
+/docker/                @ameyg910
+/.github/               @ameyg910
+/pyproject.toml         @ameyg910
+/uv.lock                @ameyg910
+
+# Architecture decisions are the project's memory; changing one is a design change.
+/docs/adr/              @ameyg910

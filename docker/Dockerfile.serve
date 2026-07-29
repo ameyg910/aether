@@ -1,0 +1,103 @@
+# syntax=docker/dockerfile:1.7
+#
+# Multi-stage image for the Aether inference server.
+#
+# Stage 1 (builder) carries compilers, headers, and pip's build machinery to
+# resolve and install dependencies into a self-contained virtualenv. Stage 2
+# copies only that virtualenv into a clean base. The build toolchain -- easily
+# hundreds of megabytes, and a meaningful attack surface -- never reaches the
+# published image.
+#
+# Base is python:3.12-slim rather than an nvidia/cuda image on purpose: modern
+# PyTorch CUDA wheels vendor the CUDA runtime libraries they need, so the host
+# only has to provide the driver and the nvidia-container-toolkit. Skipping the
+# CUDA base image removes ~2 GB of duplicated libraries and one more thing whose
+# version has to line up.
+#
+#   CPU (default, small):
+#     docker build -f docker/Dockerfile.serve -t aether-serve .
+#   GPU:
+#     docker build -f docker/Dockerfile.serve \
+#       --build-arg TORCH_INDEX=https://download.pytorch.org/whl/cu124 \
+#       -t aether-serve:gpu .
+
+ARG PYTHON_VERSION=3.12
+
+# ---------------------------------------------------------------- builder ----
+FROM python:${PYTHON_VERSION}-slim AS builder
+
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv "$VIRTUAL_ENV"
+
+WORKDIR /build
+
+# Torch first and on its own layer: it is by far the largest dependency and the
+# least likely to change, so it stays cached across ordinary source edits.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url "${TORCH_INDEX}" torch
+
+# Dependency metadata before source, so editing code does not invalidate the
+# dependency layer.
+COPY pyproject.toml README.md ./
+COPY src/aether/__init__.py src/aether/__init__.py
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install ".[serve]" && pip uninstall -y aether-dlm
+
+COPY src/ src/
+COPY configs/ configs/
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-deps .
+
+# ---------------------------------------------------------------- runtime ----
+FROM python:${PYTHON_VERSION}-slim AS runtime
+
+LABEL org.opencontainers.image.title="aether-serve" \
+      org.opencontainers.image.description="Masked diffusion LM inference server" \
+      org.opencontainers.image.source="https://github.com/ameyg910/aether" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+ENV VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    HF_HOME=/home/aether/.cache/huggingface
+
+# curl is here only for the HEALTHCHECK below; keep the runtime surface minimal.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root: a container escape from a root process is a host compromise. The
+# uid is fixed so bind-mounted volumes have predictable ownership.
+RUN groupadd --gid 10001 aether \
+    && useradd --uid 10001 --gid aether --create-home --shell /usr/sbin/nologin aether
+
+COPY --from=builder --chown=aether:aether /opt/venv /opt/venv
+COPY --chown=aether:aether configs/ /app/configs/
+
+WORKDIR /app
+USER aether
+
+EXPOSE 8000
+
+# Probes readiness, not liveness: an unhealthy container here means "not serving
+# traffic yet", which is what an orchestrator should act on.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=3 \
+    CMD curl --fail --silent http://localhost:8000/ready || exit 1
+
+ENTRYPOINT ["aether-serve"]
+CMD ["serve.host=0.0.0.0", "serve.port=8000"]

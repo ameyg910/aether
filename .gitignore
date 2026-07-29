@@ -13,4 +13,5 @@ coverage.xml
 outputs/
 .hydra/
 wee7apply.sh
+uv.lock
 data/

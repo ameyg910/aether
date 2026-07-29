@@ -11,11 +11,12 @@ language model** — the MDLM/SUBS formulation that LLaDA and Dream scaled to ch
 autoregressive LLMs. This repository grows week by week from a typed research skeleton
 into a served, containerized, observable, open-source framework.
 
-> **Status:** Week 7 — the model is now a service. A FastAPI server exposes generation
-> with dynamic batching, SSE streaming of the denoising process, versioned model loading
-> with rollback, health/readiness probes, and Prometheus metrics. Behind it sits a typed
-> evaluation harness, two samplers with an explicit NFE knob, and distributed training
-> with MFU reporting. Containerization and deployment land in later weeks.
+> **Status:** Week 8 — the platform is reproducible. `docker compose up` brings the
+> inference server, Prometheus, and a provisioned Grafana dashboard up on any machine;
+> multi-stage images run as non-root and publish to GHCR on tagged releases, gated on a
+> CI matrix that lints, type-checks, tests, and runs a regression benchmark. Behind it
+> sits a served model, a typed evaluation harness, and distributed training with MFU
+> reporting. Orchestration and release land in Weeks 9–10.
 
 ## What works today (Weeks 1–4)
 
@@ -59,6 +60,13 @@ into a served, containerized, observable, open-source framework.
   from local paths or the HF Hub so deploys are reproducible and rollback is instant.
   *(Week 7)*
 
+- **Reproducible builds and CI/CD.** Multi-stage Docker images for serving and
+  training — non-root, with the build toolchain excluded from the runtime layer — plus a
+  one-command `docker compose` stack wiring the server to Prometheus and a provisioned
+  Grafana dashboard. `uv.lock` pins the full transitive dependency graph. CI runs a
+  Python 3.12/3.13 matrix with coverage and builds both images; tagged releases re-run
+  the entire gate before publishing versioned images to GHCR. *(Week 8)*
+
 Every commit is gated by `mypy --strict`, `ruff`, and `pytest` in CI — including a
 multi-process DDP test that spawns real workers and asserts that ranks trained on
 different data end with identical parameters, and a pinned regression benchmark that
@@ -92,6 +100,8 @@ make bench-regression                                          # pinned CI bench
 
 pip install -e ".[serve]"
 aether-serve serve.model_version=runs/my-run                    # inference API on :8000
+
+docker compose up --build                                       # whole stack, one command
 ```
 
 Training is tracked, checkpointed, and resumable — see the [Training run](#training-run)
@@ -173,8 +183,6 @@ python benchmarks/nfe_quality.py \
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | _pending — run the sweep against a trained checkpoint_ | | | | | | | |
 
-![quality vs compute](docs/assets/nfe_quality.png)
-
 > Evaluate `confidence` against a **trained** checkpoint. On an untrained model its
 > argmax collapses immediately and it looks far worse than `ancestral` — a property of
 > the random model, not of the sampler.
@@ -228,6 +236,41 @@ every endpoint, the SSE stream resolving token by token, the batching counters, 
 load-test output. [docs/serving.md](docs/serving.md) is the reference guide, including
 why liveness and readiness are separate probes.
 
+## Running the stack
+
+```bash
+docker compose up --build
+```
+
+| service | URL |
+| --- | --- |
+| inference API (OpenAPI docs) | http://localhost:8000/docs |
+| Prometheus | http://localhost:9090 |
+| Grafana (admin/admin) | http://localhost:3000 |
+
+Point the server at a checkpoint with `MODEL_VERSION` — a local path under `./runs`
+(bind-mounted read-only) or a Hub tag:
+
+```bash
+MODEL_VERSION=hf:ameyg910/aether-55m@v0.1.0 docker compose up
+```
+
+Both images are multi-stage: the build stage carries compilers and pip's machinery,
+the runtime stage receives only the resulting virtualenv, and the container runs as a
+non-root user. The base is `python:3.12-slim` rather than an `nvidia/cuda` image —
+modern PyTorch CUDA wheels vendor the runtime libraries they need, so the host only
+supplies the driver, which removes roughly 2 GB of duplicated libraries and one more
+version that has to line up.
+
+Tagging `v*` triggers the release workflow, which **re-runs the full gate before
+publishing** — tags can be pushed to any commit, including one CI never saw — then
+pushes semver-tagged images to GHCR. See [docs/releasing.md](docs/releasing.md) for the
+versioning policy and [CHANGELOG.md](CHANGELOG.md) for the curated history.
+
+[Engineering Review #2](docs/reviews/review-02.md) covers where the platform stands at
+this point: what is production-grade, what is still single-host, and the technical debt
+queued for Week 9.
+
 ## Why absorbing-state diffusion?
 
 The forward process replaces tokens with an absorbing `[MASK]` state at a rate set by a
@@ -250,6 +293,7 @@ src/aether/
                #   distributed.py (DDP/FSDP), precision.py, mfu.py
   seed.py      # deterministic seeding + RNG state capture
 configs/       # composable YAML run configuration (model / data / train / tracking)
+docker/        # multi-stage Dockerfiles + prometheus/grafana provisioning
 benchmarks/    # NFE-quality sweep + pinned regression benchmark
 loadtest/      # locust load-test driver
 scripts/       # demo, visualization, scaling analysis
@@ -269,7 +313,7 @@ docs/          # ADRs, data + training guides, engineering reviews
 | 5  | Distributed training (DDP / FSDP), MFU + scaling | ✅ |
 | 6  | Evaluation harness, samplers, NFE benchmark | ✅ |
 | 7  | Serving: batching, registry, SSE, metrics | ✅ |
-| 8  | Docker + CI/CD | ⏳ |
+| 8  | Docker, compose stack, CI/CD, release policy | ✅ |
 | 9  | Kubernetes + observability | ⏳ |
 | 10 | Release + Hugging Face | ⏳ |
 

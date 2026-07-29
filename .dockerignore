@@ -1,0 +1,38 @@
+# Keep the build context small: every file here would otherwise be shipped to the
+# daemon on each build, slowing it down and busting layer caches on irrelevant
+# changes. Data and checkpoints in particular are gigabytes.
+.git
+.github
+**/__pycache__
+**/*.py[cod]
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Datasets, checkpoints, and run artifacts belong in volumes, not images.
+data/
+runs/
+wandb/
+benchmarks/results/
+loadtest/results/
+*.pt
+*.bin
+*.npy
+
+# Docs and dev-only material contribute nothing to a runtime image.
+docs/
+examples/
+notebooks/
+*.md
+!README.md
+.pre-commit-config.yaml
+Makefile
+apply_week*.sh

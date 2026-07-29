@@ -1,5 +1,5 @@
 .RECIPEPREFIX := >
-.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling eval bench bench-regression serve loadtest
+.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling eval bench bench-regression serve loadtest docker-build docker-serve compose-up compose-down lock
 
 help:
 > @echo "Targets: install lint format type test all demo plot config"
@@ -66,3 +66,19 @@ serve:
 
 loadtest:
 > locust -f loadtest/locustfile.py --host $(HOST) --headless -u $(USERS) -r $(USERS) -t 30s
+
+docker-build:
+> docker build -f docker/Dockerfile.serve -t aether-serve:dev .
+> docker build -f docker/Dockerfile.train -t aether-train:dev --build-arg TORCH_INDEX=https://download.pytorch.org/whl/cpu .
+
+docker-serve:
+> docker run --rm -p 8000:8000 -v $(PWD)/runs:/app/runs:ro aether-serve:dev serve.model_version=$(MODEL)
+
+compose-up:
+> docker compose up --build
+
+compose-down:
+> docker compose down -v
+
+lock:
+> uv lock

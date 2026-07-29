@@ -1,0 +1,102 @@
+# One-command stack: inference server + Prometheus + Grafana.
+#
+#   docker compose up --build
+#
+#   server      http://localhost:8000/docs
+#   prometheus  http://localhost:9090
+#   grafana     http://localhost:3000   (admin / admin)
+#
+# Point the server at a checkpoint by setting MODEL_VERSION -- a local path under
+# ./runs (bind-mounted read-only) or a Hub tag like hf:owner/repo@v1:
+#
+#   MODEL_VERSION=hf:ameyg910/aether-55m@v0.1.0 docker compose up
+#
+# For GPU serving, build with the CUDA wheel index and uncomment the `deploy`
+# block below (requires the nvidia-container-toolkit on the host).
+
+services:
+  aether-serve:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.serve
+      args:
+        # Default CPU wheels keep the image small; override for GPU.
+        TORCH_INDEX: ${TORCH_INDEX:-https://download.pytorch.org/whl/cpu}
+    image: ghcr.io/ameyg910/aether-serve:${AETHER_VERSION:-dev}
+    container_name: aether-serve
+    command:
+      - serve.host=0.0.0.0
+      - serve.port=8000
+      - serve.model_version=${MODEL_VERSION:-}
+      - serve.max_batch_size=${MAX_BATCH_SIZE:-32}
+      - serve.max_wait_ms=${MAX_WAIT_MS:-20}
+    ports:
+      - "${SERVE_PORT:-8000}:8000"
+    volumes:
+      # Checkpoints are read-only to the server: a serving process has no reason
+      # to be able to modify the weights it is serving.
+      - ./runs:/app/runs:ro
+      - hf-cache:/home/aether/.cache/huggingface
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8000/ready"]
+      interval: 15s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+    restart: unless-stopped
+    # GPU serving: uncomment, and build with TORCH_INDEX=.../cu124
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: aether-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      # Needed for the Grafana dashboards to reload without a restart.
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      # Start after the server is *reachable*; Prometheus tolerates a target
+      # being down, so readiness is not required here.
+      - aether-serve
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: aether-grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      # Local stack, not an exposed service: no sign-up, no anonymous access.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      # Datasource and dashboards are provisioned from files, so the stack comes
+      # up already configured rather than needing clicks in the UI.
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  hf-cache:

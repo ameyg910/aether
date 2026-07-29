@@ -1,0 +1,147 @@
+{
+  "title": "Aether inference",
+  "uid": "aether-inference",
+  "tags": ["aether", "inference"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Model loaded",
+      "description": "1 when a checkpoint is resident and /ready returns 200.",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [{ "expr": "aether_model_loaded", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "NOT READY", "color": "red", "index": 0 } } },
+            { "type": "value", "options": { "1": { "text": "READY", "color": "green", "index": 1 } } }
+          ]
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Requests / sec",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(aether_requests_total[1m]))", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Batching ratio",
+      "description": "Requests per executed batch. 1.0 means nothing is merging; higher is better.",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(aether_requests_total{endpoint=\"generate\"}[5m])) / clamp_min(rate(aether_batches_total[5m]), 0.001)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Tokens / sec",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [{ "expr": "rate(aether_tokens_generated_total[1m])", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Errors / sec",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "targets": [{ "expr": "sum(rate(aether_errors_total[5m]))", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.01 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Queue depth",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "targets": [{ "expr": "aether_queue_depth", "refId": "A" }]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Request latency quantiles",
+      "description": "Computed from histogram buckets, which aggregate correctly across replicas -- averaging pre-computed p95s does not.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(aether_request_latency_seconds_bucket[1m])) by (le, endpoint))",
+          "legendFormat": "p50 {{endpoint}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(aether_request_latency_seconds_bucket[1m])) by (le, endpoint))",
+          "legendFormat": "p95 {{endpoint}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(aether_request_latency_seconds_bucket[1m])) by (le, endpoint))",
+          "legendFormat": "p99 {{endpoint}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Throughput",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(aether_requests_total[1m])) by (endpoint, status)",
+          "legendFormat": "{{endpoint}} {{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Batching: queue depth and in-flight batch size",
+      "description": "Queue depth rising while batch size is capped means the server is saturated -- add replicas.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "aether_queue_depth", "legendFormat": "queue depth", "refId": "A" },
+        { "expr": "aether_in_flight_batch_size", "legendFormat": "batch size", "refId": "B" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Sampling cost (NFE/s) and queue wait",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "rate(aether_nfe_total[1m])", "legendFormat": "forward passes/s", "refId": "A" },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(aether_queue_wait_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p95 queue wait (s)",
+          "refId": "B"
+        }
+      ]
+    }
+  ]
+}

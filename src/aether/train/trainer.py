@@ -103,6 +103,11 @@ class Trainer:
         self.ema = EMA(self.core, cfg.ema_decay)
         self.step = 0
         self._meter: ThroughputMeter | None = None
+        # Checkpoints written by *this* run, oldest first. Pruning is scoped to
+        # these: globbing the directory instead would delete pre-existing files
+        # from earlier runs, and -- when a fresh run starts in a populated dir --
+        # would delete its own newest checkpoint, since that is the lowest-numbered.
+        self._written: list[Path] = []
 
     # -- throughput ----------------------------------------------------------
     def _build_meter(self, seq_len: int) -> ThroughputMeter:
@@ -141,6 +146,8 @@ class Trainer:
             extra=extra,
             is_main=self.dist.is_main,
         )
+        if self.dist.is_main and tag.startswith("step_"):
+            self._written.append(path)
         return path if self.dist.is_main else None
 
     def load(self, path: Path, restore_rng: bool = True) -> None:
@@ -151,15 +158,17 @@ class Trainer:
         logger.info("resumed", step=self.step, path=str(path), rank=self.dist.rank)
 
     def _prune_checkpoints(self) -> None:
-        if not self.dist.is_main:
+        """Retain the last ``keep_last`` checkpoints *this run* wrote.
+
+        Scoped deliberately to ``self._written`` rather than a directory glob.
+        A glob deletes by step number across everything present, which means a
+        fresh run started in a directory holding higher-numbered checkpoints from
+        a previous run deletes the file it just wrote instead of the stale ones.
+        """
+        if not self.dist.is_main or self.cfg.keep_last <= 0:
             return
-        ckpt_dir = self.run_dir / "checkpoints"
-        step_ckpts = sorted(
-            ckpt_dir.glob("step_*.pt"),
-            key=lambda p: int(p.stem.split("_")[1]),
-        )
-        for stale in step_ckpts[: -self.cfg.keep_last] if self.cfg.keep_last > 0 else []:
-            stale.unlink(missing_ok=True)
+        while len(self._written) > self.cfg.keep_last:
+            self._written.pop(0).unlink(missing_ok=True)
 
     # -- sampling callback ---------------------------------------------------
     @torch.no_grad()

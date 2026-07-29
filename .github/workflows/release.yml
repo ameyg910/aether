@@ -1,0 +1,111 @@
+name: Release
+
+# Publishing is gated on a version tag, not on a branch push: an image in the
+# registry should correspond to a deliberate, named release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build (e.g. v0.1.0)"
+        required: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BASE: ${{ github.repository }}
+
+jobs:
+  verify:
+    # Never publish an artifact that has not passed the gate. Tags can be pushed
+    # to any commit, including one that never saw CI.
+    name: Verify before publishing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[dev,serve]"
+      - run: ruff check .
+      - run: mypy
+      - run: pytest -q
+      - run: python benchmarks/regression.py
+
+  publish:
+    name: Build and push ${{ matrix.image }}
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image: aether-serve
+            dockerfile: docker/Dockerfile.serve
+            torch_index: https://download.pytorch.org/whl/cpu
+          - image: aether-train
+            dockerfile: docker/Dockerfile.train
+            torch_index: https://download.pytorch.org/whl/cpu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE }}/${{ matrix.image }}
+          # semver tags give consumers a choice of pinning strictness:
+          # v1.2.3 (exact), v1.2 (patches), v1 (minor+patch), latest.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          build-args: |
+            TORCH_INDEX=${{ matrix.torch_index }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+  release-notes:
+    name: Draft release notes
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Generated from conventional-commit messages since the previous tag.
+          generate_release_notes: true
+          body: |
+            Container images:
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}/aether-serve:${{ github.ref_name }}
+            docker pull ghcr.io/${{ github.repository }}/aether-train:${{ github.ref_name }}
+            ```
+
+            See [CHANGELOG.md](CHANGELOG.md) for the curated history.
