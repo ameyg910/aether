@@ -1,0 +1,18 @@
+apiVersion: v2
+name: aether
+description: Masked diffusion language model inference service
+type: application
+
+# `version` is the chart's own version and `appVersion` the application's. They
+# move independently: a values-only change bumps the chart but not the app, and
+# a new image with no template change bumps appVersion alone. Both follow semver.
+version: 0.9.0
+appVersion: "0.8.0"
+
+keywords: [diffusion, language-model, inference, mlops]
+home: https://github.com/ameyg910/aether
+sources:
+  - https://github.com/ameyg910/aether
+maintainers:
+  - name: ameyg910
+    url: https://github.com/ameyg910

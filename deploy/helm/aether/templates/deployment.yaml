@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aether.fullname" . }}
+  labels:
+    {{- include "aether.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "aether.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "aether.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- if .Values.metrics.annotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.serve.port | quote }}
+        prometheus.io/path: "/metrics"
+        {{- end }}
+        {{- /* Roll pods when the ConfigMap changes; otherwise a values-only
+               change updates the ConfigMap and nothing restarts to read it. */}}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ include "aether.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - serve.host=0.0.0.0
+            - serve.port={{ .Values.serve.port }}
+            - serve.model_version=$(MODEL_VERSION)
+            - serve.max_batch_size=$(SERVE_MAX_BATCH_SIZE)
+            - serve.max_wait_ms=$(SERVE_MAX_WAIT_MS)
+            - serve.device=$(SERVE_DEVICE)
+            {{- with .Values.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "aether.fullname" . }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.serve.port }}
+              protocol: TCP
+          {{- /* Liveness restarts the container; readiness only removes it from
+                 the Service. A pod still loading a model must fail readiness but
+                 pass liveness, or it is killed before it can finish loading. */}}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            {{- toYaml .Values.probes.startup | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.model.persistence.enabled }}
+            - name: models
+              mountPath: {{ .Values.model.persistence.mountPath }}
+              readOnly: true
+            {{- end }}
+            {{- /* readOnlyRootFilesystem: anything that writes needs a mount. */}}
+            - name: cache
+              mountPath: /home/aether/.cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- if .Values.model.persistence.enabled }}
+        - name: models
+          persistentVolumeClaim:
+            claimName: {{ .Values.model.persistence.existingClaim }}
+        {{- end }}
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

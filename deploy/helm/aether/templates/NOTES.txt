@@ -1,0 +1,36 @@
+{{ .Chart.Name }} {{ .Chart.Version }} deployed as "{{ .Release.Name }}".
+
+Image: {{ include "aether.image" . }}
+
+1. Wait for readiness (the model loads on startup):
+
+   kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "aether.fullname" . }}
+
+2. Reach the API:
+
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "aether.fullname" . }} 8000:{{ .Values.service.port }}
+   curl localhost:8000/ready
+   open http://localhost:8000/docs
+
+{{- if not .Values.model.version }}
+
+   NOTE: model.version is empty, so the server starts UNREADY on purpose --
+   /health answers, /ready returns 503. Set a version:
+
+     helm upgrade {{ .Release.Name }} ./deploy/helm/aether \
+       --set model.version=hf:owner/repo@v1
+{{- end }}
+
+{{- if .Values.autoscaling.enabled }}
+
+3. Autoscaling is on ({{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }} replicas):
+
+   kubectl -n {{ .Release.Namespace }} get hpa {{ include "aether.fullname" . }} --watch
+{{- if .Values.autoscaling.queueDepthMetricEnabled }}
+
+   Queue-depth scaling needs prometheus-adapter to expose aether_queue_depth.
+   Without it the HPA falls back to the CPU target. See docs/deployment.md.
+{{- end }}
+{{- end }}
+
+Runbook: docs/runbook.md

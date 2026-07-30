@@ -1,0 +1,56 @@
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "aether.fullname" . }}
+  labels:
+    {{- include "aether.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "aether.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.autoscaling.queueDepthMetricEnabled }}
+    {{- /* Queue depth, not CPU: CPU flattens near a ceiling once the worker pool
+           is busy, so it saturates before it reflects how far behind the service
+           is. Requires prometheus-adapter. */}}
+    - type: Pods
+      pods:
+        metric:
+          name: aether_queue_depth
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.autoscaling.targetQueueDepth | quote }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 4
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      {{- /* Slow retreat: each new pod pays a cold model load, so flapping is
+             expensive. */}}
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min
+{{- end }}

@@ -1,0 +1,66 @@
+{{- if .Values.metrics.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "aether.fullname" . }}
+  labels:
+    {{- include "aether.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: aether.rules
+      rules:
+        {{- /* Alerts fire on user-visible symptoms, not on causes. High CPU is
+               not an incident; requests failing or getting slow is. */}}
+        - alert: AetherNoReadyReplicas
+          expr: sum(aether_model_loaded) == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No Aether replica is serving"
+            description: "Every replica reports model_loaded=0 for 2m. The service is down."
+        - alert: AetherHighErrorRate
+          expr: |
+            sum(rate(aether_requests_total{status="error"}[5m]))
+              / clamp_min(sum(rate(aether_requests_total[5m])), 0.001) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Over 5% of Aether requests are failing"
+        - alert: AetherHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(aether_request_latency_seconds_bucket{endpoint="generate"}[5m])) by (le)
+            ) > 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Aether p95 generation latency above 5s"
+            description: "Check queue depth and whether the HPA is at maxReplicas."
+        - alert: AetherQueueBacklog
+          expr: avg(aether_queue_depth) > 10
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Aether request queue is backing up"
+            description: "Sustained backlog. If replicas are at max, add capacity."
+        - alert: AetherBatchingIneffective
+          expr: |
+            sum(rate(aether_requests_total{endpoint="generate"}[10m]))
+              / clamp_min(sum(rate(aether_batches_total[10m])), 0.001) < 1.2
+            and sum(rate(aether_requests_total{endpoint="generate"}[10m])) > 1
+          for: 15m
+          labels:
+            severity: info
+          annotations:
+            summary: "Dynamic batching is not merging requests"
+            description: >-
+              Under real traffic the batching ratio should exceed 1. Near 1.0 means
+              max_wait_ms may be too low, or requests have incompatible parameters.
+{{- end }}

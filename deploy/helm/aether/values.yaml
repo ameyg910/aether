@@ -1,0 +1,123 @@
+# Default values for the aether chart.
+# Override with `--set key=value` or `-f my-values.yaml`.
+
+image:
+  repository: ghcr.io/ameyg910/aether/aether-serve
+  # Empty means "use .Chart.AppVersion", which keeps the deployed image and the
+  # chart's declared appVersion in step by default.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 2
+
+# --- model -------------------------------------------------------------------
+model:
+  # Version tag: "hf:owner/repo@revision" (reproducible) or a path under the
+  # mounted volume. Empty starts the server unready, which is intentional --
+  # /ready reports the problem and /admin/swap can push a working version.
+  version: ""
+  # Mount a PVC holding checkpoints instead of pulling from the Hub.
+  persistence:
+    enabled: false
+    existingClaim: ""
+    mountPath: /app/runs
+
+# --- server tuning -----------------------------------------------------------
+serve:
+  device: cpu
+  maxBatchSize: 32
+  # Latency each request pays to be batched with others. Raising it fills batches
+  # more reliably at the cost of idle-load latency.
+  maxWaitMs: 20
+  port: 8000
+
+# --- autoscaling -------------------------------------------------------------
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  # Requests queued per pod. The primary signal -- see deploy/k8s/hpa.yaml for
+  # why CPU is the wrong metric for an inference service.
+  targetQueueDepth: "2"
+  # Requires prometheus-adapter to expose aether_queue_depth. When false, only
+  # the CPU target below applies.
+  queueDepthMetricEnabled: true
+  targetCPUUtilizationPercentage: 70
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    # Deliberately no CPU limit: throttling shows up as unexplained tail latency.
+    memory: 4Gi
+
+# Must exceed the server's 30s graceful-shutdown budget so in-flight generation
+# finishes rather than being killed.
+terminationGracePeriodSeconds: 60
+
+probes:
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 2
+  # Allows a slow model load without a long liveness initialDelay forever after.
+  startup:
+    periodSeconds: 10
+    failureThreshold: 30
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: aether.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# --- observability -----------------------------------------------------------
+metrics:
+  # Pod annotations for plain Prometheus scrape discovery.
+  annotations: true
+  serviceMonitor:
+    # Requires the Prometheus Operator CRDs.
+    enabled: false
+    interval: 15s
+    labels:
+      release: prometheus
+  prometheusRule:
+    enabled: false
+    labels:
+      release: prometheus
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+extraArgs: []

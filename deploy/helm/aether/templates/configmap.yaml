@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aether.fullname" . }}
+  labels:
+    {{- include "aether.labels" . | nindent 4 }}
+data:
+  MODEL_VERSION: {{ .Values.model.version | quote }}
+  SERVE_DEVICE: {{ .Values.serve.device | quote }}
+  SERVE_MAX_BATCH_SIZE: {{ .Values.serve.maxBatchSize | quote }}
+  SERVE_MAX_WAIT_MS: {{ .Values.serve.maxWaitMs | quote }}
