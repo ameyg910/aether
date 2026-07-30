@@ -30,6 +30,12 @@ helm upgrade --install aether ./deploy/helm/aether \
 the rollout failed. Without it Helm returns success the moment the objects are
 accepted, which tells you nothing about whether the service works.
 
+> **`--wait` only makes sense when `model.version` is set.** With no model the
+> server starts unready on purpose (`/health` 200, `/ready` 503), the Deployment
+> never reports Available, and `--wait` blocks until it times out. For a
+> no-model install — a local cluster smoke test, for instance — omit it and watch
+> `kubectl get pods` for Running instead.
+
 ## Roll back
 
 Two independent mechanisms, for two different failures.

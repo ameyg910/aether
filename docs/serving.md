@@ -127,7 +127,7 @@ pass), so a checkpoint without it can be loaded into a differently-shaped model
 that silently computes something else. Aether records the config at save time and
 only falls back to inference for older checkpoints.
 
-Publish with a filled-in [model card](templates/MODEL_CARD.md).
+Publish with a filled-in [model card](https://github.com/ameyg910/aether/blob/main/docs/templates/MODEL_CARD.md).
 
 ## Metrics
 

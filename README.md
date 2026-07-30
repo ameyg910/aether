@@ -1,6 +1,10 @@
 # Aether
 
 [![CI](https://github.com/ameyg910/aether/actions/workflows/ci.yml/badge.svg)](https://github.com/ameyg910/aether/actions/workflows/ci.yml)
+[![Docs](https://github.com/ameyg910/aether/actions/workflows/docs.yml/badge.svg)](https://ameyg910.github.io/aether/)
+[![Release](https://img.shields.io/github/v/release/ameyg910/aether)](https://github.com/ameyg910/aether/releases)
+[![Demo](https://img.shields.io/badge/%F0%9F%A4%97-Live%20demo-yellow)](https://huggingface.co/spaces/ameyg910/aether-demo)
+[![Model](https://img.shields.io/badge/%F0%9F%A4%97-Weights-blue)](https://huggingface.co/ameyg910/aether-55m)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/style-ruff-000000)](https://github.com/astral-sh/ruff)
@@ -11,12 +15,47 @@ language model** — the MDLM/SUBS formulation that LLaDA and Dream scaled to ch
 autoregressive LLMs. This repository grows week by week from a typed research skeleton
 into a served, containerized, observable, open-source framework.
 
-> **Status:** Week 9 — the platform is orchestrated. A Helm chart deploys the service to
-> Kubernetes with liveness/readiness probes, rolling updates, and an HPA that scales on
-> **queue depth rather than CPU**; Grafana dashboards and Prometheus alert rules are
-> committed as code and validated in CI against the metrics the service actually exports.
-> Behind it sits a reproducible container build, a served model, a typed evaluation
-> harness, and distributed training with MFU reporting. Release lands in Week 10.
+> **v1.0.0** — built over ten weeks from a typed research skeleton into a trained,
+> evaluated, served, containerized, orchestrated, and released framework.
+>
+> **[Try the live demo](https://huggingface.co/spaces/ameyg910/aether-demo)** ·
+> **[Docs](https://ameyg910.github.io/aether/)** ·
+> **[Weights](https://huggingface.co/ameyg910/aether-55m)** ·
+> **[Final review](docs/reviews/review-final.md)**
+
+## Results
+
+A 55.5M-parameter model on WikiText-103, 30k steps, one RTX A6000:
+
+| | measured |
+| --- | --- |
+| Likelihood bound | **7.14 nats/token** · 10.30 bits-per-dim |
+| Training efficiency | **29.7% MFU** single-GPU |
+| Serving throughput | **~15 req/s** at 16 concurrent users, p50 660 ms, 0 failures |
+| Dynamic batching | **~12x** over serialized serving |
+| Confidence sampler | **3.8x faster** than ancestral at equal requested steps |
+| Autoscaling | 1 → 5 replicas under load, verified on k3d |
+
+The model is deliberately small and undertrained — the platform is the artifact,
+and the model is the fixture that keeps its numbers honest. See
+[docs/evaluation.md](docs/evaluation.md) for why perplexity is an *upper bound*
+here and not comparable to an autoregressive model's.
+
+## Try it
+
+```bash
+git clone https://github.com/ameyg910/aether.git && cd aether
+make install
+make train-toy      # full train + evaluate cycle, no GPU, no downloads
+```
+
+Or hit the running model:
+
+```bash
+pip install -e ".[serve]"
+aether-serve serve.model_version=hf:ameyg910/aether-55m@v1.0.0
+python examples/client_example.py --stream    # watch text denoise live
+```
 
 ## What works today (Weeks 1–4)
 
@@ -354,12 +393,34 @@ docs/          # ADRs, data + training guides, engineering reviews
 | 7  | Serving: batching, registry, SSE, metrics | ✅ |
 | 8  | Docker, compose stack, CI/CD, release policy | ✅ |
 | 9  | Kubernetes, Helm, autoscaling, dashboards | ✅ |
-| 10 | Release + Hugging Face | ⏳ |
+| 10 | Release: HF model + Space, docs site, v1.0.0 | ✅ |
 
 ## Development
 
-Fully typed (`mypy --strict`), linted and formatted with `ruff`, tested with `pytest`,
-and configuration-driven via Hydra. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Fully typed (`mypy --strict`), linted and formatted with `ruff`, tested with `pytest`
+(182 tests, 81% coverage), and configuration-driven via Hydra. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+Looking to contribute? [ROADMAP.md](ROADMAP.md) lists open work, including several
+self-contained `good first issue` items that need no GPU.
+
+## Honest limitations
+
+Stated plainly, because a portfolio project that only lists wins is not worth
+trusting:
+
+- **The model is unconditional.** There is no prompt input — it generates from an
+  all-`[MASK]` sequence. Masked diffusion is natively an infiller and this release
+  does not implement it; it is the first item on the roadmap.
+- **FSDP has never run on hardware.** It cannot initialize on CPU, so it has no CI
+  coverage and no multi-GPU box was available. Code-reviewed, not tested.
+  ([ADR-0003](docs/adr/0003-ddp-vs-fsdp.md))
+- **No GPU in CI.** bf16 kernels and NCCL collectives are exercised by hand only.
+- **The scaling plot is missing.** DDP correctness is covered by a multi-process
+  CI test, but three GPUs were never simultaneously free to measure efficiency.
+
+[The final review](docs/reviews/review-final.md) covers the rest, including the
+four bugs that shipped because the sandbox differed from the deployment target.
 
 ## License
 

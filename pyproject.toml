@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aether-dlm"
-version = "0.1.0"
+version = "1.0.0"
 description = "A production-grade masked (absorbing-state) diffusion language model platform."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -45,6 +45,8 @@ dev = [
   "ruff>=0.6",
   "pre-commit>=3.7",
   "matplotlib>=3.8",
+  "mkdocs-material>=9.5",
+  "pymdown-extensions>=10.0",
 ]
 
 [project.scripts]

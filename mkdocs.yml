@@ -1,0 +1,87 @@
+site_name: Aether
+site_description: A production platform for masked diffusion language models
+site_url: https://ameyg910.github.io/aether/
+repo_url: https://github.com/ameyg910/aether
+repo_name: ameyg910/aether
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        # Renders the architecture diagram rather than showing its source.
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Quickstart: quickstart.md
+      - Reproducibility: reproducibility.md
+  - Guides:
+      - Data pipeline: data.md
+      - Training: training.md
+      - Distributed training: cluster.md
+      - Evaluation: evaluation.md
+      - Serving: serving.md
+      - Deployment: deployment.md
+  - Reference:
+      - Architecture: architecture.md
+      - Runbook: runbook.md
+      - Releasing: releasing.md
+      - Serving demo: serving-demo.md
+  - Decisions:
+      - ADR-0001 Absorbing-state MDLM: adr/0001-absorbing-state-mdlm.md
+      - ADR-0002 Time conditioning: adr/0002-time-conditioning.md
+      - ADR-0003 DDP vs FSDP: adr/0003-ddp-vs-fsdp.md
+  - Reviews:
+      - "#1 (Week 4)": reviews/review-01.md
+      - "#2 (Week 8)": reviews/review-02.md
+      - Final (Week 10): reviews/review-final.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ameyg910/aether
+    - icon: fontawesome/solid/robot
+      link: https://huggingface.co/ameyg910/aether-55m
+
+copyright: Apache-2.0

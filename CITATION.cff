@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+title: "Aether: a production platform for masked diffusion language models"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - given-names: Amey
+    family-names: Gupta
+    affiliation: "BITS Pilani"
+repository-code: "https://github.com/ameyg910/aether"
+url: "https://ameyg910.github.io/aether/"
+abstract: >-
+  Aether is an end-to-end platform for masked (absorbing-state) diffusion
+  language models, covering data preparation, distributed training, evaluation,
+  inference serving with dynamic batching, and Kubernetes deployment with
+  autoscaling and observability.
+keywords:
+  - diffusion models
+  - language models
+  - MLOps
+  - distributed training
+  - inference serving
+license: Apache-2.0
+version: 1.0.0
+date-released: "2026-07-31"
+references:
+  - type: article
+    title: "Simple and Effective Masked Diffusion Language Models"
+    authors:
+      - family-names: Sahoo
+        given-names: Subham
+    year: 2024
+    notes: "MDLM/SUBS formulation implemented here; see docs/adr/0001."
+  - type: article
+    title: "Structured Denoising Diffusion Models in Discrete State-Spaces"
+    authors:
+      - family-names: Austin
+        given-names: Jacob
+    year: 2021
+    notes: "D3PM; the absorbing-state process."

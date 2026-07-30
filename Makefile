@@ -1,5 +1,5 @@
 .RECIPEPREFIX := >
-.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling eval bench bench-regression serve loadtest docker-build docker-serve compose-up compose-down lock helm-lint helm-render k8s-deploy k8s-loadtest k8s-clean
+.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling eval bench bench-regression serve loadtest docker-build docker-serve compose-up compose-down lock helm-lint helm-render k8s-deploy k8s-loadtest k8s-clean train-toy docs docs-serve
 
 help:
 > @echo "Targets: install lint format type test all demo plot config"
@@ -82,6 +82,28 @@ compose-down:
 
 lock:
 > uv lock
+
+train-toy:
+> @# End-to-end reproduction from a clean clone: no GPU, no downloads.
+> @# Proves the pipeline runs, not that the model is good.
+> @echo "==> preparing a small offline corpus"
+> aether-prepare data=local_debug
+> @echo "==> training"
+> aether-train train=debug data=local_debug tracking.backend=jsonl \
+>   train.run_name=toy train.max_steps=200 train.out_dir=runs
+> @echo "==> evaluating"
+> aether-eval eval=fast data=local_debug \
+>   eval.checkpoint=runs/toy/checkpoints/latest.pt eval.run_name=toy
+> @echo ""
+> @echo "done. checkpoint: runs/toy/checkpoints/latest.pt"
+> @echo "      metrics:    runs/toy/metrics.jsonl"
+> @echo "      eval:       benchmarks/results/toy.json"
+
+docs:
+> mkdocs build --strict
+
+docs-serve:
+> mkdocs serve
 
 helm-lint:
 > helm lint deploy/helm/aether

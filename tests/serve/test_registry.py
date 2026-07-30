@@ -69,3 +69,73 @@ def test_failed_swap_leaves_the_live_model_untouched(checkpoint: Path) -> None:
     with pytest.raises(FileNotFoundError):
         registry.swap("local:/nonexistent/model.pt")
     assert registry.require().version == f"local:{checkpoint}"
+
+
+class TestHubVersionTags:
+    """The ``hf:`` resolution path.
+
+    Every other registry test uses ``local:`` paths, so until now this branch had
+    never executed -- it was the one code path in the registry with no coverage,
+    and the one that matters most for reproducible deploys. ``hf_hub_download`` is
+    patched out: the parsing and the arguments passed to the Hub are what this
+    module is responsible for, not the download itself.
+    """
+
+    @staticmethod
+    def _capture(monkeypatch, checkpoint: Path) -> dict:  # type: ignore[type-arg]
+        seen: dict = {}  # type: ignore[type-arg]
+
+        def fake_download(**kwargs: object) -> str:
+            seen.update(kwargs)
+            return str(checkpoint)
+
+        import huggingface_hub
+
+        monkeypatch.setattr(huggingface_hub, "hf_hub_download", fake_download)
+        return seen
+
+    def test_repo_and_revision_are_parsed(self, monkeypatch, checkpoint: Path) -> None:  # type: ignore[no-untyped-def]
+        seen = self._capture(monkeypatch, checkpoint)
+        resolve_version("hf:ameyg910/aether-55m@v1.0.0")
+        assert seen["repo_id"] == "ameyg910/aether-55m"
+        assert seen["revision"] == "v1.0.0"
+        # Default filename when the tag does not name one.
+        assert seen["filename"] == "latest.pt"
+
+    def test_revision_is_optional(self, monkeypatch, checkpoint: Path) -> None:  # type: ignore[no-untyped-def]
+        seen = self._capture(monkeypatch, checkpoint)
+        resolve_version("hf:ameyg910/aether-55m")
+        assert seen["repo_id"] == "ameyg910/aether-55m"
+        # None, not "": the Hub treats an empty revision as invalid.
+        assert seen["revision"] is None
+
+    def test_explicit_filename_is_parsed(self, monkeypatch, checkpoint: Path) -> None:  # type: ignore[no-untyped-def]
+        seen = self._capture(monkeypatch, checkpoint)
+        resolve_version("hf:ameyg910/aether-55m:aether-55m-30k.pt@v1.0.0")
+        assert seen["repo_id"] == "ameyg910/aether-55m"
+        assert seen["filename"] == "aether-55m-30k.pt"
+        assert seen["revision"] == "v1.0.0"
+
+    def test_cache_dir_is_forwarded(self, monkeypatch, checkpoint: Path) -> None:  # type: ignore[no-untyped-def]
+        seen = self._capture(monkeypatch, checkpoint)
+        resolve_version("hf:owner/repo@v1", cache_dir="/tmp/hfcache")
+        assert seen["cache_dir"] == "/tmp/hfcache"
+
+    def test_registry_loads_a_model_from_a_hub_tag(self, monkeypatch, checkpoint: Path) -> None:  # type: ignore[no-untyped-def]
+        # End to end through the registry, so the version tag is what is recorded
+        # and reported by /model -- a deploy must be identifiable by tag.
+        self._capture(monkeypatch, checkpoint)
+        registry = ModelRegistry(tokenizer_name="byte", device="cpu")
+        loaded = registry.swap("hf:ameyg910/aether-55m@v1.0.0")
+        assert loaded.version == "hf:ameyg910/aether-55m@v1.0.0"
+        assert registry.is_ready
+
+    def test_rollback_between_hub_revisions(self, monkeypatch, checkpoint: Path) -> None:  # type: ignore[no-untyped-def]
+        # The reason immutable revisions matter: rolling back to a pinned tag
+        # gets you the same weights it did the first time.
+        self._capture(monkeypatch, checkpoint)
+        registry = ModelRegistry(tokenizer_name="byte", device="cpu")
+        registry.swap("hf:owner/repo@v1.0.0")
+        registry.swap("hf:owner/repo@v1.1.0")
+        assert registry.require().version == "hf:owner/repo@v1.1.0"
+        assert registry.rollback().version == "hf:owner/repo@v1.0.0"

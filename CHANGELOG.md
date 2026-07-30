@@ -16,6 +16,28 @@ changes how you use the project.
 > first version with container images in the registry. Comparison links for
 > earlier entries therefore point at the repository rather than at releases.
 
+## [1.0.0] — Week 10
+
+First stable release. The public API — HTTP contract, CLI entry points, Hydra
+config keys, checkpoint format, and Prometheus metric names — is now covered by
+semantic versioning.
+
+### Added
+- Model and generated model card published to the Hugging Face Hub, with an
+  immutable revision tag so `hf:owner/repo@v1.0.0` is a reproducible deploy target.
+- Public Gradio Space demo showing the denoising process and the NFE knob.
+- MkDocs Material documentation site published to GitHub Pages, built with
+  `--strict` so broken links fail the build.
+- `make train-toy`: reproduces a full train-and-evaluate cycle from a clean clone
+  with no GPU and no downloads.
+- `CITATION.cff`, `ROADMAP.md`, and labelled good-first-issue template.
+- Final Engineering Review (`docs/reviews/review-final.md`).
+
+### Fixed
+- The `hf:` version-tag path in the model registry had never been executed — every
+  test used `local:` paths. Now covered, including revision parsing, explicit
+  filenames, and rollback between pinned Hub revisions.
+
 ## [Unreleased]
 
 ### Added

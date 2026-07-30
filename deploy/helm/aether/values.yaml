@@ -25,6 +25,17 @@ model:
     enabled: false
     existingClaim: ""
     mountPath: /app/runs
+  # Mount a small checkpoint from a ConfigMap. Useful for local clusters and
+  # demos where there is no registry or PVC: every replica then loads the same
+  # weights at startup and becomes Ready, which is what an autoscaling demo
+  # needs (an unready pod is not in the Service, so no traffic reaches it).
+  #   kubectl create configmap aether-ckpt --from-file=model.pt=tiny.pt
+  #   helm upgrade ... --set model.configMap.enabled=true \
+  #     --set model.version=local:/mnt/ckpt/model.pt
+  configMap:
+    enabled: false
+    name: aether-ckpt
+    mountPath: /mnt/ckpt
 
 # --- server tuning -----------------------------------------------------------
 serve:

@@ -12,7 +12,7 @@ dist/
 coverage.xml
 outputs/
 .hydra/
-uv.lock
-week8apply.sh
-week9apply.sh
 data/
+
+# mkdocs build output
+site/

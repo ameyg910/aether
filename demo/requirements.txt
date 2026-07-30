@@ -1,0 +1,8 @@
+# Hugging Face Space dependencies. CPU torch: a Space has no GPU on the free tier
+# and the CUDA wheel is ~2.5 GB of download for nothing.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.2
+gradio>=4.44
+huggingface-hub>=0.25
+tiktoken>=0.7
+aether-dlm @ git+https://github.com/ameyg910/aether.git@v1.0.0

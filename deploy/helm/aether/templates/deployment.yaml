@@ -89,6 +89,11 @@ spec:
               mountPath: {{ .Values.model.persistence.mountPath }}
               readOnly: true
             {{- end }}
+            {{- if .Values.model.configMap.enabled }}
+            - name: checkpoint
+              mountPath: {{ .Values.model.configMap.mountPath }}
+              readOnly: true
+            {{- end }}
             {{- /* readOnlyRootFilesystem: anything that writes needs a mount. */}}
             - name: cache
               mountPath: /home/aether/.cache
@@ -99,6 +104,11 @@ spec:
         - name: models
           persistentVolumeClaim:
             claimName: {{ .Values.model.persistence.existingClaim }}
+        {{- end }}
+        {{- if .Values.model.configMap.enabled }}
+        - name: checkpoint
+          configMap:
+            name: {{ .Values.model.configMap.name }}
         {{- end }}
         - name: cache
           emptyDir: {}
