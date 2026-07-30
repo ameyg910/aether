@@ -11,12 +11,12 @@ language model** — the MDLM/SUBS formulation that LLaDA and Dream scaled to ch
 autoregressive LLMs. This repository grows week by week from a typed research skeleton
 into a served, containerized, observable, open-source framework.
 
-> **Status:** Week 8 — the platform is reproducible. `docker compose up` brings the
-> inference server, Prometheus, and a provisioned Grafana dashboard up on any machine;
-> multi-stage images run as non-root and publish to GHCR on tagged releases, gated on a
-> CI matrix that lints, type-checks, tests, and runs a regression benchmark. Behind it
-> sits a served model, a typed evaluation harness, and distributed training with MFU
-> reporting. Orchestration and release land in Weeks 9–10.
+> **Status:** Week 9 — the platform is orchestrated. A Helm chart deploys the service to
+> Kubernetes with liveness/readiness probes, rolling updates, and an HPA that scales on
+> **queue depth rather than CPU**; Grafana dashboards and Prometheus alert rules are
+> committed as code and validated in CI against the metrics the service actually exports.
+> Behind it sits a reproducible container build, a served model, a typed evaluation
+> harness, and distributed training with MFU reporting. Release lands in Week 10.
 
 ## What works today (Weeks 1–4)
 
@@ -66,6 +66,13 @@ into a served, containerized, observable, open-source framework.
   Grafana dashboard. `uv.lock` pins the full transitive dependency graph. CI runs a
   Python 3.12/3.13 matrix with coverage and builds both images; tagged releases re-run
   the entire gate before publishing versioned images to GHCR. *(Week 8)*
+
+- **Kubernetes orchestration and observability.** A versioned Helm chart with probes,
+  resource requests, rolling updates that never dip below full capacity, and an HPA
+  scaling on `aether_queue_depth`. Grafana dashboards and alert rules live in the repo
+  and are checked in CI against the registry's real metric names, so a renamed series
+  fails a build instead of silently emptying a panel. A `kind` job installs the chart on
+  a real cluster and probes the endpoints. *(Week 9)*
 
 Every commit is gated by `mypy --strict`, `ruff`, and `pytest` in CI — including a
 multi-process DDP test that spawns real workers and asserts that ranks trained on
@@ -271,6 +278,37 @@ versioning policy and [CHANGELOG.md](CHANGELOG.md) for the curated history.
 this point: what is production-grade, what is still single-host, and the technical debt
 queued for Week 9.
 
+## Kubernetes
+
+```bash
+k3d cluster create aether            # or: kind create cluster
+helm install aether ./deploy/helm/aether \
+  --set model.version=hf:ameyg910/aether-55m@v0.8.0
+
+kubectl port-forward svc/aether 8000:8000
+curl localhost:8000/ready
+```
+
+The HPA scales on **queue depth, not CPU**. Once the worker pool is busy, CPU flattens
+near a ceiling while requests pile up — so it saturates *before* it reflects how far
+behind the service is, and on GPU it barely moves at all. Queue depth measures what
+users actually feel and responds immediately in both directions.
+
+Watch it scale:
+
+```bash
+kubectl apply -f deploy/k8s/loadgen.yaml
+kubectl get hpa aether --watch
+```
+
+Dashboards and alert rules are committed as code under `deploy/grafana/`, and CI
+validates every query against the metric names the service really exports —
+a renamed series fails the build rather than quietly emptying a panel.
+
+See [docs/deployment.md](docs/deployment.md) for a clean-cluster install,
+[docs/runbook.md](docs/runbook.md) for operational procedures, and
+[docs/architecture.md](docs/architecture.md) for the full system diagram.
+
 ## Why absorbing-state diffusion?
 
 The forward process replaces tokens with an absorbing `[MASK]` state at a rate set by a
@@ -294,6 +332,7 @@ src/aether/
   seed.py      # deterministic seeding + RNG state capture
 configs/       # composable YAML run configuration (model / data / train / tracking)
 docker/        # multi-stage Dockerfiles + prometheus/grafana provisioning
+deploy/        # k8s manifests, Helm chart, Grafana dashboards + alert rules
 benchmarks/    # NFE-quality sweep + pinned regression benchmark
 loadtest/      # locust load-test driver
 scripts/       # demo, visualization, scaling analysis
@@ -314,7 +353,7 @@ docs/          # ADRs, data + training guides, engineering reviews
 | 6  | Evaluation harness, samplers, NFE benchmark | ✅ |
 | 7  | Serving: batching, registry, SSE, metrics | ✅ |
 | 8  | Docker, compose stack, CI/CD, release policy | ✅ |
-| 9  | Kubernetes + observability | ⏳ |
+| 9  | Kubernetes, Helm, autoscaling, dashboards | ✅ |
 | 10 | Release + Hugging Face | ⏳ |
 
 ## Development

@@ -1,0 +1,137 @@
+name: Kubernetes
+
+# The unit-test job validates the manifests statically. This one is the only
+# place the chart meets an actual API server: it catches schema errors, bad
+# template rendering, and probe misconfiguration that no amount of YAML parsing
+# will find.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/**"
+      - "docker/**"
+      - ".github/workflows/k8s.yml"
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "docker/**"
+      - ".github/workflows/k8s.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: k8s-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-chart:
+    name: Lint and render chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: helm lint
+        run: helm lint deploy/helm/aether
+
+      - name: Render with defaults
+        run: helm template aether deploy/helm/aether > /tmp/default.yaml
+
+      - name: Render with autoscaling and monitoring enabled
+        run: |
+          helm template aether deploy/helm/aether \
+            --set autoscaling.enabled=true \
+            --set metrics.serviceMonitor.enabled=true \
+            --set metrics.prometheusRule.enabled=true \
+            --set ingress.enabled=true \
+            --set model.version=hf:owner/repo@v1 \
+            > /tmp/full.yaml
+
+      - name: Validate rendered manifests against Kubernetes schemas
+        # Catches fields that are valid YAML but not valid Kubernetes.
+        run: |
+          curl -sLO https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar xzf kubeconform-linux-amd64.tar.gz
+          # ServiceMonitor/PrometheusRule are CRDs; skip those kinds rather than
+          # pulling the whole Prometheus Operator schema set.
+          ./kubeconform -strict -summary \
+            -skip ServiceMonitor,PrometheusRule \
+            -schema-location default \
+            /tmp/default.yaml /tmp/full.yaml
+
+      - name: Validate the plain manifests too
+        run: ./kubeconform -strict -summary -skip ServiceMonitor deploy/k8s/
+
+  deploy-kind:
+    name: Deploy to kind
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Create cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: aether-ci
+          wait: 120s
+
+      - name: Build the serve image
+        run: |
+          docker build -f docker/Dockerfile.serve -t aether-serve:ci .
+
+      - name: Load image into the cluster
+        # kind nodes have their own image store; without this the pod would sit
+        # in ImagePullBackOff trying to reach a registry.
+        run: kind load docker-image aether-serve:ci --name aether-ci
+
+      - name: helm install
+        run: |
+          helm install aether deploy/helm/aether \
+            --set image.repository=aether-serve \
+            --set image.tag=ci \
+            --set image.pullPolicy=Never \
+            --set replicaCount=1 \
+            --set autoscaling.enabled=false \
+            --wait --timeout 5m
+
+      - name: Show what landed
+        if: always()
+        run: |
+          kubectl get all
+          kubectl describe deploy/aether || true
+
+      - name: Wait for readiness
+        # The chart deliberately ships with no model version, so the pod starts
+        # UNREADY by design. Assert liveness answers and readiness reports 503 --
+        # that separation is the whole point of having two probes.
+        run: |
+          kubectl wait --for=condition=Available deploy/aether --timeout=180s || true
+          POD=$(kubectl get pod -l app.kubernetes.io/name=aether -o jsonpath='{.items[0].metadata.name}')
+          echo "pod: $POD"
+          kubectl wait --for=condition=Ready pod/$POD --timeout=60s || echo "not Ready (expected: no model configured)"
+
+      - name: Smoke-test the endpoints
+        run: |
+          kubectl port-forward svc/aether 8000:8000 &
+          sleep 8
+          echo "--- /health (must be 200 even with no model) ---"
+          curl -sf localhost:8000/health | tee /dev/stderr | grep -q '"status":"ok"'
+          echo "--- /ready (must be 503 with no model loaded) ---"
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8000/ready)
+          echo "status=$code"
+          test "$code" = "503"
+          echo "--- /metrics ---"
+          curl -sf localhost:8000/metrics | grep -q '^aether_model_loaded'
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          kubectl logs -l app.kubernetes.io/name=aether --tail=200 || true
+          kubectl get events --sort-by=.lastTimestamp | tail -40 || true
+
+      - name: helm uninstall
+        if: always()
+        run: helm uninstall aether || true

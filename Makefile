@@ -1,5 +1,5 @@
 .RECIPEPREFIX := >
-.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling eval bench bench-regression serve loadtest docker-build docker-serve compose-up compose-down lock
+.PHONY: help install lint format type test all demo plot config data data-debug overfit train train-debug train-ddp scaling eval bench bench-regression serve loadtest docker-build docker-serve compose-up compose-down lock helm-lint helm-render k8s-deploy k8s-loadtest k8s-clean
 
 help:
 > @echo "Targets: install lint format type test all demo plot config"
@@ -82,3 +82,20 @@ compose-down:
 
 lock:
 > uv lock
+
+helm-lint:
+> helm lint deploy/helm/aether
+
+helm-render:
+> helm template aether deploy/helm/aether $(ARGS)
+
+k8s-deploy:
+> helm upgrade --install aether ./deploy/helm/aether --wait --timeout 5m $(ARGS)
+
+k8s-loadtest:
+> kubectl apply -f deploy/k8s/loadgen.yaml
+> kubectl get hpa aether --watch
+
+k8s-clean:
+> kubectl delete -f deploy/k8s/loadgen.yaml --ignore-not-found
+> helm uninstall aether
