@@ -22,7 +22,7 @@ from typing import Any
 
 import torch
 
-from aether.config import load_config
+from aether.config import cli_overrides, load_config
 from aether.data.datamodule import DiffusionDataModule
 from aether.data.tokenizer import build_tokenizer
 from aether.diffusion.samplers import sample
@@ -46,7 +46,14 @@ def load_model_from_checkpoint(path: Path, model: AetherModel) -> AetherModel:
 
 
 def main() -> None:
-    cfg = load_config(sys.argv[1:])
+    argv = cli_overrides(
+        sys.argv[1:],
+        "aether-eval — evaluate a masked diffusion LM.\n"
+        "Usage: aether-eval [hydra overrides]\n"
+        "  e.g. aether-eval eval.checkpoint=runs/my-run/checkpoints/latest.pt\n"
+        "See docs/evaluation.md for details.",
+    )
+    cfg = load_config(argv)
     configure_logging()
     seed_everything(cfg.seed)
     device = resolve_device(cfg.train.device)

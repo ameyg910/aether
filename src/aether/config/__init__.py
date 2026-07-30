@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import cast
 
@@ -21,7 +22,23 @@ from aether.config.schemas import (
     TrainConfig,
 )
 
-_CONFIG_DIR = str(Path(__file__).resolve().parents[3] / "configs")
+
+def _resolve_config_dir() -> str:
+    """Locate the ``configs/`` directory.
+
+    ``AETHER_CONFIG_DIR`` wins when set. This is what a packaged install needs:
+    once ``aether`` is installed into site-packages, walking up from ``__file__``
+    lands inside the environment, not at a repo root, so the container sets the
+    variable to where it copied the configs. The source-tree path
+    (repo_root/configs) remains the fallback for editable installs and tests.
+    """
+    override = os.environ.get("AETHER_CONFIG_DIR")
+    if override:
+        return override
+    return str(Path(__file__).resolve().parents[3] / "configs")
+
+
+_CONFIG_DIR = _resolve_config_dir()
 
 
 def _register_schema() -> None:
@@ -33,6 +50,23 @@ def _register_schema() -> None:
     """
     cs = ConfigStore.instance()
     cs.store(name="_aether_schema", node=AetherConfig)
+
+
+def cli_overrides(argv: list[str], usage: str) -> list[str]:
+    """Turn argv into Hydra overrides, handling ``--help`` ourselves.
+
+    ``load_config`` calls Hydra's ``compose`` API directly rather than through the
+    ``@hydra.main`` decorator, so the usual ``--help`` handling does not exist:
+    Hydra would try to parse ``--help`` as a ``key=value`` override and raise a
+    lexer error. We intercept the help flags, print usage, and exit cleanly --
+    which is also what makes a bare ``docker run <image>`` behave sensibly.
+    """
+    import sys
+
+    if any(a in ("--help", "-h") for a in argv):
+        print(usage)
+        sys.exit(0)
+    return argv
 
 
 def load_config(overrides: list[str] | None = None) -> AetherConfig:
@@ -62,5 +96,6 @@ __all__ = [
     "ServeConfig",
     "TrackingConfig",
     "TrainConfig",
+    "cli_overrides",
     "load_config",
 ]

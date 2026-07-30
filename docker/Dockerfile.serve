@@ -73,6 +73,7 @@ ENV VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    AETHER_CONFIG_DIR=/app/configs \
     HF_HOME=/home/aether/.cache/huggingface
 
 # curl is here only for the HEALTHCHECK below; keep the runtime surface minimal.

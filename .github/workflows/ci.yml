@@ -91,10 +91,22 @@ jobs:
           cache-from: type=gha,scope=serve
           cache-to: type=gha,scope=serve,mode=max
       - name: Smoke-test the image
-        # A image that builds but cannot start is not a passing build.
+        # Two checks. First that the entrypoint runs (--help exits 0 and prints
+        # usage; the CLI intercepts it before Hydra, which would otherwise reject
+        # it as an unparseable override). Second, that the packaged app can load
+        # its configs and build -- the failure mode that a missing config dir or
+        # a broken install produces, without binding a port or loading a model.
         run: |
-          docker run --rm aether-serve:ci --help > /dev/null
-          echo "serve image starts"
+          docker run --rm aether-serve:ci --help
+          docker run --rm --entrypoint python aether-serve:ci -c "
+          from aether.serve.app import create_app, ServerSettings
+          from aether.config import load_config
+          load_config(['serve.port=8000'])
+          app = create_app(ServerSettings(model_version=None, device='cpu'))
+          paths = {r.path for r in app.routes if hasattr(r, 'path')}
+          assert {'/generate', '/health', '/ready', '/metrics'} <= paths, paths
+          print('serve image OK: config loads, app builds,', len(paths), 'routes')
+          "
       - name: Report image size
         run: docker images aether-serve:ci --format '{{.Repository}}:{{.Tag}} {{.Size}}'
       - name: Build train image

@@ -12,6 +12,6 @@ dist/
 coverage.xml
 outputs/
 .hydra/
-wee7apply.sh
 uv.lock
+week8apply.sh
 data/

@@ -25,7 +25,7 @@ import torch
 from omegaconf import OmegaConf
 from torch import Tensor
 
-from aether.config import load_config
+from aether.config import cli_overrides, load_config
 from aether.data.datamodule import DiffusionDataModule
 from aether.data.tokenizer import build_tokenizer
 from aether.diffusion.loss import MaskedDiffusionLoss
@@ -61,7 +61,14 @@ def torch_batches(dm: DiffusionDataModule, rank: int = 0, world_size: int = 1) -
 
 
 def main() -> None:
-    cfg = load_config(sys.argv[1:])
+    argv = cli_overrides(
+        sys.argv[1:],
+        "aether-train — train a masked diffusion LM.\n"
+        "Usage: aether-train [hydra overrides]\n"
+        "  e.g. aether-train model=medium data=wikitext103 train.max_steps=30000\n"
+        "See configs/ for groups and docs/training.md for details.",
+    )
+    cfg = load_config(argv)
     dist_info = init_distributed()
     configure_logging()
     seed_everything(cfg.seed)  # identical on every rank: replicas must start equal

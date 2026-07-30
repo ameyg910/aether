@@ -15,7 +15,7 @@ import sys
 
 import uvicorn
 
-from aether.config import load_config
+from aether.config import cli_overrides, load_config
 from aether.log import configure_logging, get_logger
 from aether.serve.app import ServerSettings, create_app
 
@@ -23,7 +23,14 @@ logger = get_logger("serve.cli")
 
 
 def main() -> None:
-    cfg = load_config(sys.argv[1:])
+    argv = cli_overrides(
+        sys.argv[1:],
+        "aether-serve — serve a masked diffusion LM over HTTP.\n"
+        "Usage: aether-serve [hydra overrides]\n"
+        "  e.g. aether-serve serve.model_version=runs/my-run serve.port=8000\n"
+        "See docs/serving.md for details.",
+    )
+    cfg = load_config(argv)
     configure_logging()
 
     settings = ServerSettings(
