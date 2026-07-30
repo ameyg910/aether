@@ -1,8 +1,14 @@
 # Load generator used to demonstrate autoscaling. Not part of the service.
 #
 #   kubectl apply -f deploy/k8s/loadgen.yaml
-#   kubectl get hpa aether-serve --watch
+#   kubectl get hpa aether --watch
 #   kubectl delete -f deploy/k8s/loadgen.yaml
+#
+# TARGET_HOST must match the Service name, which differs by install method:
+#   Helm release "aether"      -> Service "aether"        (the default here)
+#   plain deploy/k8s manifests -> Service "aether-serve"
+# Override with:
+#   kubectl set env job/aether-loadgen TARGET_HOST=aether-serve
 #
 # Runs 8 parallel clients issuing generation requests, which drives queue depth
 # past the HPA target and triggers scale-up.
@@ -34,14 +40,16 @@ spec:
               end=$(( $(date +%s) + ${DURATION_S} ))
               while [ "$(date +%s)" -lt "$end" ]; do
                 curl -s -m 60 -X POST \
-                  "http://aether-serve:8000/generate" \
+                  "http://${TARGET_HOST}:8000/generate" \
                   -H 'content-type: application/json' \
-                  -d '{"n_samples":1,"length":128,"steps":64}' > /dev/null || true
+                  -d '{"n_samples":1,"length":48,"steps":64}' -o /dev/null -w "%{http_code} " || true
               done
               echo "done"
           env:
             - name: DURATION_S
               value: "300"
+            - name: TARGET_HOST
+              value: "aether"
           resources:
             requests:
               cpu: "50m"
