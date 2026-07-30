@@ -171,6 +171,7 @@ Two samplers make that tradeoff explicit:
 | `confidence` | most-confident positions first | latency matters — far better at low NFE |
 
 Sweep the curve and regenerate the table below:
+![nfe quality](docs/assets/nfe_quality.png)
 
 ```bash
 python benchmarks/nfe_quality.py \
