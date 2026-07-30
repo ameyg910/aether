@@ -1,0 +1,35 @@
+# prometheus-adapter configuration: exposes aether_queue_depth through the
+# custom.metrics.k8s.io API so the HPA can scale on it.
+#
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm install prometheus-adapter prometheus-community/prometheus-adapter \
+#     -f deploy/prometheus/adapter-values.yaml
+#
+# Without this the HPA silently falls back to its CPU target -- which still
+# scales, just on a signal that saturates before it reflects real backlog.
+prometheus:
+  url: http://prometheus-operated.monitoring.svc
+  port: 9090
+
+rules:
+  default: false
+  custom:
+    - seriesQuery: 'aether_queue_depth{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: { resource: namespace }
+          pod: { resource: pod }
+      name:
+        as: "aether_queue_depth"
+      # Average over a short window: the raw gauge is spiky enough that scaling
+      # on an instantaneous read would cause the autoscaler to flap.
+      metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[1m])'
+
+    - seriesQuery: 'aether_in_flight_batch_size{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: { resource: namespace }
+          pod: { resource: pod }
+      name:
+        as: "aether_in_flight_batch_size"
+      metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[1m])'
