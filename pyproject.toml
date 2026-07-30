@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aether-dlm"
-version = "0.8.0"
+version = "0.1.0"
 description = "A production-grade masked (absorbing-state) diffusion language model platform."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -31,6 +31,7 @@ serve = [
   "pydantic>=2.6",
   "prometheus-client>=0.20",
   "huggingface-hub>=0.25",
+  "tiktoken>=0.7",      # GPT-2 tokenizer used by the registry to decode generated tokens
 ]
 tracking = ["wandb>=0.17"]
 viz = ["matplotlib>=3.8"]
