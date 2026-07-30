@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aether-serve
+  labels:
+    app.kubernetes.io/name: aether
+    app.kubernetes.io/component: inference
+spec:
+  replicas: 2
+  # maxUnavailable: 0 keeps full capacity during a rollout -- new pods must pass
+  # readiness before old ones are removed. surge=1 bounds the extra cost.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aether
+      app.kubernetes.io/component: inference
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aether
+        app.kubernetes.io/component: inference
+      annotations:
+        # Plain-Prometheus scrape discovery. With the Prometheus Operator use the
+        # ServiceMonitor instead; these annotations are harmless either way.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Must exceed the server's own graceful-shutdown budget (30s) so in-flight
+      # requests finish instead of being SIGKILLed mid-generation.
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: aether-serve
+          image: ghcr.io/ameyg910/aether/aether-serve:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - serve.host=0.0.0.0
+            - serve.port=8000
+            - serve.model_version=$(MODEL_VERSION)
+            - serve.max_batch_size=$(SERVE_MAX_BATCH_SIZE)
+            - serve.max_wait_ms=$(SERVE_MAX_WAIT_MS)
+            - serve.device=$(SERVE_DEVICE)
+          envFrom:
+            - configMapRef:
+                name: aether-config
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          # Liveness and readiness are deliberately different endpoints.
+          # Liveness failing gets the container RESTARTED; readiness failing only
+          # removes it from the Service. A pod still loading a checkpoint must
+          # fail readiness but pass liveness, or it is killed before it can
+          # finish and never starts at all.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          # startupProbe gives a slow model load up to 5 minutes without forcing
+          # a long initialDelay on the liveness probe for the rest of the pod's life.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              # No CPU limit on purpose: CPU limits cause throttling that shows up
+              # as unexplained tail latency. The request reserves capacity; the
+              # memory limit prevents a leak taking down the node.
+              memory: "4Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: models
+              mountPath: /app/runs
+              readOnly: true
+            - name: cache
+              mountPath: /home/aether/.cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: models
+          emptyDir: {}
+        # readOnlyRootFilesystem means anything that writes needs an explicit mount.
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

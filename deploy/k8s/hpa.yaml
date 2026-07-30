@@ -1,0 +1,68 @@
+# Horizontal Pod Autoscaler.
+#
+# WHY NOT CPU. CPU utilisation is the default autoscaling metric and the wrong
+# one for this service. Inference work happens in a bounded worker-thread pool
+# feeding a model; once that pool is busy, CPU flattens near a ceiling while
+# requests pile up in the batcher queue. CPU therefore saturates *before* it
+# reflects how far behind the service is, and on a GPU deployment it barely moves
+# at all -- the GPU is the bottleneck and the CPU is mostly waiting on it.
+#
+# Queue depth measures the thing users actually feel: how many requests are
+# waiting for service. It rises immediately under load and falls immediately when
+# capacity is added, which is exactly the signal an autoscaler needs.
+#
+# The custom metric requires prometheus-adapter to expose `aether_queue_depth`
+# through the custom.metrics.k8s.io API. Without it, only the CPU target applies,
+# which still works -- just less precisely. See docs/deployment.md.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aether-serve
+  labels:
+    app.kubernetes.io/name: aether
+    app.kubernetes.io/component: inference
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: aether-serve
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    # Primary signal: average requests queued per pod. Two waiting requests per
+    # replica means the batcher is consistently full and latency is climbing.
+    - type: Pods
+      pods:
+        metric:
+          name: aether_queue_depth
+        target:
+          type: AverageValue
+          averageValue: "2"
+    # Fallback so the HPA still functions without prometheus-adapter installed.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      # React fast: a latency spike is felt immediately, and an extra pod is cheap.
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100      # allow doubling
+          periodSeconds: 30
+        - type: Pods
+          value: 4
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      # Retreat slowly: scaling down into a load trough that immediately returns
+      # causes flapping, and each new pod pays a cold model load before it serves.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min

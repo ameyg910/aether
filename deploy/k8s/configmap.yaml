@@ -1,0 +1,17 @@
+# Server tuning. Kept in a ConfigMap rather than baked into the image so batch
+# behaviour can be changed with a rollout instead of a rebuild.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aether-config
+  labels:
+    app.kubernetes.io/name: aether
+    app.kubernetes.io/component: inference
+data:
+  # Hydra overrides, passed as args to the container's entrypoint.
+  SERVE_MAX_BATCH_SIZE: "32"
+  SERVE_MAX_WAIT_MS: "20"
+  SERVE_DEVICE: "cpu"
+  # Version tag: a local path under the mounted volume, or "hf:owner/repo@rev".
+  # A Hub revision is immutable, which is what makes a rollback meaningful.
+  MODEL_VERSION: ""

@@ -1,0 +1,50 @@
+# Load generator used to demonstrate autoscaling. Not part of the service.
+#
+#   kubectl apply -f deploy/k8s/loadgen.yaml
+#   kubectl get hpa aether-serve --watch
+#   kubectl delete -f deploy/k8s/loadgen.yaml
+#
+# Runs 8 parallel clients issuing generation requests, which drives queue depth
+# past the HPA target and triggers scale-up.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: aether-loadgen
+  labels:
+    app.kubernetes.io/name: aether
+    app.kubernetes.io/component: loadgen
+spec:
+  parallelism: 8
+  completions: 8
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aether
+        app.kubernetes.io/component: loadgen
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: loadgen
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "driving load for ${DURATION_S}s"
+              end=$(( $(date +%s) + ${DURATION_S} ))
+              while [ "$(date +%s)" -lt "$end" ]; do
+                curl -s -m 60 -X POST \
+                  "http://aether-serve:8000/generate" \
+                  -H 'content-type: application/json' \
+                  -d '{"n_samples":1,"length":128,"steps":64}' > /dev/null || true
+              done
+              echo "done"
+          env:
+            - name: DURATION_S
+              value: "300"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              memory: "64Mi"
