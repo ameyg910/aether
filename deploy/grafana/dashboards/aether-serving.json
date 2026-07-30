@@ -1,0 +1,172 @@
+{
+  "title": "Aether serving (Kubernetes)",
+  "uid": "aether-k8s",
+  "tags": ["aether", "inference", "kubernetes"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(aether_model_loaded, namespace)",
+        "refresh": 1,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Ready replicas",
+      "description": "Replicas reporting a loaded model. The autoscaler moves this; a drop to 0 is an outage.",
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(aether_model_loaded)", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Requests / sec",
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 0 },
+      "targets": [{ "expr": "sum(rate(aether_requests_total[1m]))", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "p95 latency",
+      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(aether_request_latency_seconds_bucket{endpoint=\"generate\"}[5m])) by (le))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Queue depth",
+      "description": "The autoscaling signal. Sustained growth means capacity is short.",
+      "gridPos": { "h": 4, "w": 4, "x": 15, "y": 0 },
+      "targets": [{ "expr": "sum(aether_queue_depth)", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Error rate",
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(aether_requests_total{status=\"error\"}[5m])) / clamp_min(sum(rate(aether_requests_total[5m])), 0.001)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Latency quantiles",
+      "description": "From histogram buckets, so quantiles aggregate correctly across replicas. Averaging per-pod p95s would be meaningless.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(aether_request_latency_seconds_bucket[1m])) by (le, endpoint))",
+          "legendFormat": "p50 {{endpoint}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(aether_request_latency_seconds_bucket[1m])) by (le, endpoint))",
+          "legendFormat": "p95 {{endpoint}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(aether_request_latency_seconds_bucket[1m])) by (le, endpoint))",
+          "legendFormat": "p99 {{endpoint}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Autoscaling: replicas vs queue depth",
+      "description": "The money panel. A load spike drives queue depth up; the HPA adds replicas; queue depth and latency recover.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        { "expr": "sum(aether_model_loaded)", "legendFormat": "ready replicas", "refId": "A" },
+        { "expr": "sum(aether_queue_depth)", "legendFormat": "queue depth", "refId": "B" },
+        { "expr": "avg(aether_in_flight_batch_size)", "legendFormat": "avg batch size", "refId": "C" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Throughput: tokens and forward passes",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [
+        { "expr": "sum(rate(aether_tokens_generated_total[1m]))", "legendFormat": "tokens/s", "refId": "A" },
+        { "expr": "sum(rate(aether_nfe_total[1m]))", "legendFormat": "forward passes/s", "refId": "B" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Batching effectiveness",
+      "description": "Requests per executed batch. 1.0 means nothing is merging and the batcher is buying nothing.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        {
+          "expr": "sum(rate(aether_requests_total{endpoint=\"generate\"}[5m])) / clamp_min(sum(rate(aether_batches_total[5m])), 0.001)",
+          "legendFormat": "requests per batch",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(aether_queue_wait_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95 queue wait (s)",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Errors by kind",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 21 },
+      "targets": [
+        { "expr": "sum(rate(aether_errors_total[5m])) by (kind)", "legendFormat": "{{kind}}", "refId": "A" }
+      ]
+    }
+  ]
+}

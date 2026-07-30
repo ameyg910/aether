@@ -98,3 +98,22 @@ ERRORS = Counter(
     labelnames=("kind",),
     registry=REGISTRY,
 )
+
+
+def exported_metric_names() -> frozenset[str]:
+    """Every metric family this service actually exposes.
+
+    Derived from the registry rather than a hand-written list, so it cannot drift.
+    Dashboards, alert rules, and autoscaler queries are validated against this in
+    CI: a renamed metric otherwise breaks a dashboard silently, and a panel that
+    queries a non-existent series renders as "No data" rather than as an error.
+    """
+    names: set[str] = set()
+    for family in REGISTRY.collect():
+        names.add(family.name)
+        # Counters expose `<name>_total`; histograms add _bucket/_sum/_count.
+        if family.type == "counter":
+            names.add(f"{family.name}_total")
+        elif family.type == "histogram":
+            names.update({f"{family.name}_bucket", f"{family.name}_sum", f"{family.name}_count"})
+    return frozenset(names)

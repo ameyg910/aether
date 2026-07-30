@@ -1,0 +1,72 @@
+# Prometheus alerting rules, committed as code.
+#
+# Every alert here fires on a *symptom a user would notice*, not on a cause.
+# "CPU is high" is not an incident; "requests are failing" and "requests are slow"
+# are. Cause-based alerts page people for conditions that may be entirely normal,
+# which is how alert fatigue starts and how real pages get ignored.
+groups:
+  - name: aether.rules
+    rules:
+      - alert: AetherNoReadyReplicas
+        expr: sum(aether_model_loaded) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No Aether replica is serving"
+          description: >-
+            Every replica reports model_loaded=0 for 2 minutes. Check
+            `kubectl get pods` and the startup logs -- most likely a bad
+            model version or an unreachable checkpoint.
+          runbook_url: "https://github.com/ameyg910/aether/blob/main/docs/runbook.md#no-ready-replicas"
+
+      - alert: AetherHighErrorRate
+        expr: |
+          sum(rate(aether_requests_total{status="error"}[5m]))
+            / clamp_min(sum(rate(aether_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Over 5% of Aether requests are failing"
+          runbook_url: "https://github.com/ameyg910/aether/blob/main/docs/runbook.md#high-error-rate"
+
+      - alert: AetherHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(aether_request_latency_seconds_bucket{endpoint="generate"}[5m])) by (le)
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Aether p95 generation latency above 5s"
+          description: >-
+            Check queue depth and whether the HPA has hit maxReplicas. Sustained
+            latency with replicas at max means the cluster needs more capacity.
+          runbook_url: "https://github.com/ameyg910/aether/blob/main/docs/runbook.md#high-latency"
+
+      - alert: AetherQueueBacklog
+        expr: avg(aether_queue_depth) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Aether request queue is backing up"
+          runbook_url: "https://github.com/ameyg910/aether/blob/main/docs/runbook.md#queue-backlog"
+
+      - alert: AetherBatchingIneffective
+        # Informational, not a page. Worth knowing, not worth waking up for.
+        expr: |
+          sum(rate(aether_requests_total{endpoint="generate"}[10m]))
+            / clamp_min(sum(rate(aether_batches_total[10m])), 0.001) < 1.2
+          and sum(rate(aether_requests_total{endpoint="generate"}[10m])) > 1
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Dynamic batching is not merging requests"
+          description: >-
+            Under concurrent traffic the ratio should exceed 1. Near 1.0 suggests
+            max_wait_ms is too low, or clients send mutually incompatible
+            generation parameters so requests cannot share a batch.
