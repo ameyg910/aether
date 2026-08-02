@@ -51,3 +51,4 @@ and why perplexity is subtler for a diffusion LM than for an AR model.
 - [Architecture](architecture.md) — how the pieces fit together
 - [Final review](reviews/review-final.md) — an honest account of what is solid,
   what is not, and what comes next
+
