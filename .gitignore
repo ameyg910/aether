@@ -13,6 +13,6 @@ coverage.xml
 outputs/
 .hydra/
 data/
-
+dryrun.cpp
 # mkdocs build output
 site/
